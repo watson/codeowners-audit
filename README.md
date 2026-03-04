@@ -6,7 +6,7 @@ Generate a polished, interactive HTML report that shows which files in a Git rep
 
 See how ownership coverage looks in practice with [this interactive report](https://htmlpreview.github.io/?https://raw.githubusercontent.com/watson/codeowners-audit/main/example.html) for the `nodejs/node` repository.
 
-<img width="1418" height="684" alt="image" src="https://github.com/user-attachments/assets/96794755-1baf-484b-8bb5-8e22e6a47cd7" />
+<img width="1411" height="731" alt="image" src="https://github.com/user-attachments/assets/396bc8bd-2010-4d5e-8922-ba643da1919c" />
 
 ## Why this exists
 
@@ -68,13 +68,6 @@ For CI checks where you do not want an HTML report, use `--check`.
 | `-C, --working-dir <dir>` | Resolve git operations from this directory (alias: `--cwd`) |
 | `--include-untracked` | Include untracked (non-ignored) files in analysis |
 | `--check[=<glob>]` | CLI-only check mode. No report is generated; exits non-zero if uncovered files match the glob (default: all files via `**`) |
-| `--team-suggestions` | Suggest likely `@org/team` owners for uncovered directories with `0%` coverage |
-| `--team-suggestions-window-days <days>` | Lookback window for git history used in team suggestions (default: `365`) |
-| `--team-suggestions-top <n>` | Maximum number of candidate teams shown per directory (default: `3`) |
-| `--team-suggestions-ignore-teams <list>` | Comma-separated team slugs or `@org/slug` handles to exclude from suggestions |
-| `--github-org <org>` | Override detected GitHub org for team lookups |
-| `--github-token-env <name>` | Environment variable containing GitHub token (default: `GITHUB_TOKEN`, fallback: `GH_TOKEN`) |
-| `--github-api-base-url <url>` | Override GitHub API base URL (useful for GitHub Enterprise or tests) |
 | `--upload` | Upload report to ZenBin and print a public URL (small reports only) |
 | `--no-open` | Do not open the report automatically |
 | `-h, --help` | Show help |
@@ -152,7 +145,6 @@ The report follows practical `CODEOWNERS` resolution behavior:
 
 - Git CLI available on `PATH`
 - `curl` available on `PATH` when using `--upload`
-- GitHub token with org/team read permissions when using `--team-suggestions` (for example `read:org` on classic PATs)
 
 ## Upload size note
 
@@ -163,7 +155,8 @@ ZenBin currently rejects request payloads around 1 MiB and larger. Very large re
 The generated page includes:
 
 - repository-level ownership metrics and coverage bar
-- scoped directory explorer with coverage bars, "Current directory" direct-file coverage, and optional team suggestions for uncovered `0%` coverage directories
+- top-level hotspots for missing ownership
+- scoped directory table with coverage bars
 - searchable list of unowned files
 - detected `CODEOWNERS` files and rule counts
 
