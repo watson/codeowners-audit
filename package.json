@@ -2,7 +2,9 @@
   "name": "codeowners-report",
   "version": "0.0.0",
   "description": "Generate an HTML report for CODEOWNERS ownership gaps",
-  "bin": "report.js",
+  "bin": {
+    "codeowners-report": "report.js"
+  },
   "scripts": {
     "test": "node --test"
   },
