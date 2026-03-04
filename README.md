@@ -1,10 +1,10 @@
-# codeowners-report
+# codeowners-audit
 
 Generate a polished, interactive HTML report that shows which files in a Git repository are covered by `CODEOWNERS` rules and where ownership gaps exist.
 
 ## Live example
 
-See how ownership coverage looks in practice with [this interactive report](https://htmlpreview.github.io/?https://raw.githubusercontent.com/watson/codeowners-report/main/example.html) for the `nodejs/node` repository.
+See how ownership coverage looks in practice with [this interactive report](https://htmlpreview.github.io/?https://raw.githubusercontent.com/watson/codeowners-audit/main/example.html) for the `nodejs/node` repository.
 
 <img width="1418" height="684" alt="image" src="https://github.com/user-attachments/assets/96794755-1baf-484b-8bb5-8e22e6a47cd7" />
 
@@ -16,7 +16,7 @@ See how ownership coverage looks in practice with [this interactive report](http
 - Which directories have the biggest ownership gaps?
 - Which specific files have no matching owner rule?
 
-`codeowners-report` scans your repository, applies `CODEOWNERS` matching rules, and produces a single self-contained HTML report you can open locally or upload to a public link.
+`codeowners-audit` scans your repository, applies `CODEOWNERS` matching rules, and produces a single self-contained HTML report you can open locally or upload to a public link.
 
 ## Highlights
 
@@ -33,14 +33,14 @@ See how ownership coverage looks in practice with [this interactive report](http
 Run with `npx` (no install):
 
 ```bash
-npx codeowners-report
+npx codeowners-audit
 ```
 
 Or install globally:
 
 ```bash
-npm install -g codeowners-report
-codeowners-report
+npm install -g codeowners-audit
+codeowners-audit
 ```
 
 ## Usage
@@ -48,7 +48,7 @@ codeowners-report
 Run this inside a Git repository:
 
 ```bash
-codeowners-report [options]
+codeowners-audit [options]
 ```
 
 By default, the tool:
@@ -75,25 +75,25 @@ By default, the tool:
 Generate report and open it automatically:
 
 ```bash
-codeowners-report
+codeowners-audit
 ```
 
 Upload report and open the shared URL:
 
 ```bash
-codeowners-report --upload
+codeowners-audit --upload
 ```
 
 Write report to repository:
 
 ```bash
-codeowners-report --output codeowners-gaps-report.html --no-open
+codeowners-audit --output codeowners-gaps-report.html --no-open
 ```
 
 Run against a repository from another directory:
 
 ```bash
-codeowners-report --working-dir ~/code/my-repo
+codeowners-audit --working-dir ~/code/my-repo
 ```
 
 ## How matching works

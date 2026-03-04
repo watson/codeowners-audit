@@ -10,7 +10,7 @@ const path = require('node:path')
 const { version: packageVersion } = require('./package.json')
 
 const DEFAULT_OUTPUT_FILE_NAME = 'codeowners-gaps-report.html'
-const DEFAULT_OUTPUT_PATH = path.join(tmpdir(), 'codeowners-report', DEFAULT_OUTPUT_FILE_NAME)
+const DEFAULT_OUTPUT_PATH = path.join(tmpdir(), 'codeowners-audit', DEFAULT_OUTPUT_FILE_NAME)
 const UPLOAD_PROVIDER = 'zenbin'
 const ZENBIN_BASE_URL = 'https://zenbin.org'
 const ZENBIN_MAX_UPLOAD_BYTES = 1024 * 1024
@@ -235,7 +235,7 @@ function parseArgs (args) {
 function printUsage () {
   console.log(
     [
-      'Usage: codeowners-report [options]',
+      'Usage: codeowners-audit [options]',
       '',
       'Options:',
       '  -o, --output <path>     Output HTML file path (default: ' + DEFAULT_OUTPUT_PATH + ')',

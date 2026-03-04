@@ -1,16 +1,16 @@
 {
-  "name": "codeowners-report",
+  "name": "codeowners-audit",
   "version": "0.0.0",
   "description": "Generate an HTML report for CODEOWNERS ownership gaps",
   "bin": {
-    "codeowners-report": "report.js"
+    "codeowners-audit": "report.js"
   },
   "scripts": {
     "test": "node --test"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/watson/codeowners-report.git"
+    "url": "git+https://github.com/watson/codeowners-audit.git"
   },
   "keywords": [
     "codeowners",
@@ -21,7 +21,7 @@
   "author": "Thomas Watson <w@tson.dk> (https://wa.tson.dk/)",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/watson/codeowners-report/issues"
+    "url": "https://github.com/watson/codeowners-audit/issues"
   },
-  "homepage": "https://github.com/watson/codeowners-report#readme"
+  "homepage": "https://github.com/watson/codeowners-audit#readme"
 }

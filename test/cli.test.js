@@ -36,7 +36,7 @@ function runGit (cwd, args) {
 }
 
 function createRepo (t, options = {}) {
-  const repoDir = mkdtempSync(path.join(tmpdir(), 'codeowners-report-test-'))
+  const repoDir = mkdtempSync(path.join(tmpdir(), 'codeowners-audit-test-'))
   t.after(() => {
     rmSync(repoDir, { recursive: true, force: true })
   })
@@ -132,7 +132,7 @@ test('output directory option writes to the requested directory', (t) => {
   }
 
   {
-    const absoluteDir = mkdtempSync(path.join(tmpdir(), 'codeowners-report-outdir-'))
+    const absoluteDir = mkdtempSync(path.join(tmpdir(), 'codeowners-audit-outdir-'))
     t.after(() => {
       rmSync(absoluteDir, { recursive: true, force: true })
     })
@@ -145,7 +145,7 @@ test('output directory option writes to the requested directory', (t) => {
 
 test('working directory option allows running outside repository cwd', (t) => {
   const repoDir = createRepo(t)
-  const outsideDir = mkdtempSync(path.join(tmpdir(), 'codeowners-report-external-cwd-'))
+  const outsideDir = mkdtempSync(path.join(tmpdir(), 'codeowners-audit-external-cwd-'))
   t.after(() => {
     rmSync(outsideDir, { recursive: true, force: true })
   })
@@ -236,7 +236,7 @@ test('handles large repositories without git stdout buffer overflow', (t) => {
 })
 
 test('--help prints usage without failing', (t) => {
-  const tempDir = mkdtempSync(path.join(tmpdir(), 'codeowners-report-help-'))
+  const tempDir = mkdtempSync(path.join(tmpdir(), 'codeowners-audit-help-'))
   t.after(() => {
     rmSync(tempDir, { recursive: true, force: true })
   })
@@ -244,7 +244,7 @@ test('--help prints usage without failing', (t) => {
   const result = runCli(['--help'], { cwd: tempDir })
 
   assert.equal(result.status, 0, result.stderr)
-  assert.match(result.stdout, /Usage: codeowners-report \[options\]/)
+  assert.match(result.stdout, /Usage: codeowners-audit \[options\]/)
   assert.match(result.stdout, /--include-untracked/)
   assert.match(result.stdout, /--output-dir/)
   assert.match(result.stdout, /--working-dir/)
@@ -253,7 +253,7 @@ test('--help prints usage without failing', (t) => {
 })
 
 test('--version prints package version without failing', (t) => {
-  const tempDir = mkdtempSync(path.join(tmpdir(), 'codeowners-report-version-'))
+  const tempDir = mkdtempSync(path.join(tmpdir(), 'codeowners-audit-version-'))
   t.after(() => {
     rmSync(tempDir, { recursive: true, force: true })
   })
