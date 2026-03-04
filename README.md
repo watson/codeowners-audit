@@ -4,7 +4,7 @@ Generate a polished, interactive HTML report that shows which files in a Git rep
 
 ## Live example
 
-See how ownership coverage looks in practice with [this interactive report](https://htmlpreview.github.io/?https://raw.githubusercontent.com/watson/codeowners-report/main/example.html) for the `nodejs/node` repository:
+See how ownership coverage looks in practice with [this interactive report](https://htmlpreview.github.io/?https://raw.githubusercontent.com/watson/codeowners-report/main/example.html) for the `nodejs/node` repository.
 
 <img width="1418" height="684" alt="image" src="https://github.com/user-attachments/assets/96794755-1baf-484b-8bb5-8e22e6a47cd7" />
 
