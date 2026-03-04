@@ -351,9 +351,18 @@
         const didChange = selectedPath !== normalizedScope
         selectedPath = normalizedScope
 
+        const scrollAnchor = document.getElementById('dir-filter')
+        const anchorTopBefore = scrollAnchor ? scrollAnchor.getBoundingClientRect().top : null
         renderTopLevel()
         if (directoryController) directoryController.render()
         if (unownedController) unownedController.render()
+        if (scrollAnchor && anchorTopBefore !== null) {
+          const anchorTopAfter = scrollAnchor.getBoundingClientRect().top
+          const delta = anchorTopAfter - anchorTopBefore
+          if (delta !== 0) {
+            globalThis.scrollBy(0, delta)
+          }
+        }
 
         if (historyMode !== 'none') {
           if (historyMode === 'replace') {
