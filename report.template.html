@@ -171,6 +171,27 @@
       border-bottom: 1px dashed rgba(255, 255, 255, 0.08);
       vertical-align: top;
     }
+    .scope-row td {
+      background: rgba(139, 92, 246, 0.08);
+    }
+    .scope-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      border: 1px solid rgba(139, 92, 246, 0.45);
+      background: rgba(139, 92, 246, 0.18);
+      color: #ddd6fe;
+      font-size: 11px;
+      letter-spacing: 0.03em;
+    }
+    .scope-label::before {
+      content: 'Scope';
+      color: #c4b5fd;
+      font-size: 10px;
+      text-transform: uppercase;
+    }
     .empty-state-row td {
       padding: 14px 8px;
       border-bottom: 0;
@@ -417,6 +438,11 @@
 
         render()
 
+        function scopeRowLabel (scope, lowercase) {
+          const label = scope ? 'Current directory' : 'Root directory'
+          return lowercase ? label.toLowerCase() : label
+        }
+
         function render () {
           const scope = getScope()
           const query = filterInput.value.trim().toLowerCase()
@@ -436,7 +462,7 @@
             rows = rows.filter((row) => {
               if (row.isCurrentScopeRow) {
                 const scopeKey = scope || '(root)'
-                const rowLabel = scope ? 'current directory' : 'root'
+                const rowLabel = scopeRowLabel(scope, true)
                 const searchable = (rowLabel + ' ' + scopeKey).toLowerCase()
                 return searchable.includes(query)
               }
@@ -447,8 +473,8 @@
           rows = rows.sort((a, b) => {
             const mult = sortDirection === 'asc' ? 1 : -1
             if (sortKey === 'path') {
-              const aLabel = a.isCurrentScopeRow ? (scope ? 'Current directory' : 'Root') : relativeLabel(a.path, scope)
-              const bLabel = b.isCurrentScopeRow ? (scope ? 'Current directory' : 'Root') : relativeLabel(b.path, scope)
+              const aLabel = a.isCurrentScopeRow ? scopeRowLabel(scope, false) : relativeLabel(a.path, scope)
+              const bLabel = b.isCurrentScopeRow ? scopeRowLabel(scope, false) : relativeLabel(b.path, scope)
               return aLabel.localeCompare(bLabel) * mult
             }
             return (a[sortKey] - b[sortKey]) * mult || a.path.localeCompare(b.path)
@@ -479,7 +505,11 @@
             cells.push('<td>' + bar + '</td>')
             tr.innerHTML = cells.join('')
             if (row.isCurrentScopeRow) {
-              tr.children[0].textContent = scope ? 'Current directory' : 'Root'
+              tr.classList.add('scope-row')
+              const scopeLabel = document.createElement('span')
+              scopeLabel.className = 'scope-label'
+              scopeLabel.textContent = scopeRowLabel(scope, false)
+              tr.children[0].appendChild(scopeLabel)
             } else {
               const pathButton = document.createElement('button')
               pathButton.className = 'path path-button'
