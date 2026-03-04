@@ -57,6 +57,7 @@ By default, the tool:
 | --- | --- |
 | `-o, --output <path>` | Output HTML file path |
 | `--output-dir <dir>` | Output directory for the generated report |
+| `-C, --working-dir <dir>` | Resolve git operations from this directory (alias: `--cwd`) |
 | `--include-untracked` | Include untracked (non-ignored) files in analysis |
 | `--upload` | Upload report to ZenBin and print a public URL (small reports only) |
 | `--no-open` | Do not open the report automatically |
@@ -81,6 +82,12 @@ Write report to repository:
 
 ```bash
 codeowners-report --output codeowners-gaps-report.html --no-open
+```
+
+Run against a repository from another directory:
+
+```bash
+codeowners-report --working-dir ~/code/my-repo
 ```
 
 ## How matching works

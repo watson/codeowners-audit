@@ -143,6 +143,26 @@ test('output directory option writes to the requested directory', (t) => {
   }
 })
 
+test('working directory option allows running outside repository cwd', (t) => {
+  const repoDir = createRepo(t)
+  const outsideDir = mkdtempSync(path.join(tmpdir(), 'codeowners-report-external-cwd-'))
+  t.after(() => {
+    rmSync(outsideDir, { recursive: true, force: true })
+  })
+
+  {
+    const result = runCli(['--working-dir', repoDir, '--output', 'reports/from-working-dir.html'], { cwd: outsideDir })
+    assert.equal(result.status, 0, result.stderr)
+    assert.ok(existsSync(path.join(repoDir, 'reports', 'from-working-dir.html')))
+  }
+
+  {
+    const result = runCli(['-C=' + repoDir, '--output', 'reports/from-short-alias.html'], { cwd: outsideDir })
+    assert.equal(result.status, 0, result.stderr)
+    assert.ok(existsSync(path.join(repoDir, 'reports', 'from-short-alias.html')))
+  }
+})
+
 test('--include-untracked adds untracked files to analysis', (t) => {
   const repoDir = createRepo(t, {
     codeowners: '/tracked.js @team\n',
@@ -227,6 +247,7 @@ test('--help prints usage without failing', (t) => {
   assert.match(result.stdout, /Usage: codeowners-report \[options\]/)
   assert.match(result.stdout, /--include-untracked/)
   assert.match(result.stdout, /--output-dir/)
+  assert.match(result.stdout, /--working-dir/)
   assert.match(result.stdout, /--no-open/)
   assert.match(result.stdout, /--version/)
 })
@@ -426,4 +447,8 @@ test('unknown and invalid options fail with a useful error', (t) => {
   const missingOutputDirResult = runCli(['--output-dir'], { cwd: repoDir })
   assert.equal(missingOutputDirResult.status, 1)
   assert.match(missingOutputDirResult.stderr, /Missing value for --output-dir/)
+
+  const missingWorkingDirResult = runCli(['--working-dir'], { cwd: repoDir })
+  assert.equal(missingWorkingDirResult.status, 1)
+  assert.match(missingWorkingDirResult.stderr, /Missing value for --working-dir/)
 })

@@ -36,10 +36,10 @@ function main () {
       return
     }
 
-    const repoRoot = runGitCommand(['rev-parse', '--show-toplevel']).trim()
-    process.chdir(repoRoot)
+    const commandWorkingDir = options.workingDir ? path.resolve(options.workingDir) : process.cwd()
+    const repoRoot = runGitCommand(['rev-parse', '--show-toplevel'], commandWorkingDir).trim()
 
-    const allRepoFiles = listRepoFiles(options.includeUntracked)
+    const allRepoFiles = listRepoFiles(options.includeUntracked, repoRoot)
     const codeownersFilePaths = allRepoFiles.filter(isCodeownersFile)
 
     if (codeownersFilePaths.length === 0) {
@@ -97,6 +97,7 @@ function main () {
  * @param {string[]} args
  * @returns {{
  *   outputPath: string,
+ *   workingDir: string|null,
  *   includeUntracked: boolean,
  *   upload: boolean,
  *   open: boolean,
@@ -109,6 +110,8 @@ function parseArgs (args) {
   let outputPathSetExplicitly = false
   let outputDir = null
   let outputDirSetExplicitly = false
+  let workingDir = null
+  let workingDirSetExplicitly = false
   let includeUntracked = false
   let upload = false
   let open = true
@@ -140,6 +143,31 @@ function parseArgs (args) {
     if (arg.startsWith('--output-dir=')) {
       outputDir = arg.slice('--output-dir='.length)
       outputDirSetExplicitly = true
+      continue
+    }
+
+    if (arg === '--working-dir' || arg === '--cwd' || arg === '-C') {
+      workingDir = args[index + 1]
+      workingDirSetExplicitly = true
+      index++
+      continue
+    }
+
+    if (arg.startsWith('--working-dir=')) {
+      workingDir = arg.slice('--working-dir='.length)
+      workingDirSetExplicitly = true
+      continue
+    }
+
+    if (arg.startsWith('--cwd=')) {
+      workingDir = arg.slice('--cwd='.length)
+      workingDirSetExplicitly = true
+      continue
+    }
+
+    if (arg.startsWith('-C=')) {
+      workingDir = arg.slice('-C='.length)
+      workingDirSetExplicitly = true
       continue
     }
 
@@ -185,8 +213,13 @@ function parseArgs (args) {
       : path.join(outputDir, DEFAULT_OUTPUT_FILE_NAME)
   }
 
+  if (!help && workingDirSetExplicitly && !workingDir) {
+    throw new Error('Missing value for --working-dir.')
+  }
+
   return {
     outputPath,
+    workingDir,
     includeUntracked,
     upload,
     open,
@@ -207,6 +240,7 @@ function printUsage () {
       'Options:',
       '  -o, --output <path>     Output HTML file path (default: ' + DEFAULT_OUTPUT_PATH + ')',
       '      --output-dir <dir>  Output directory for the generated HTML report',
+      '  -C, --working-dir <dir> Run git commands from this directory (alias: --cwd)',
       '      --include-untracked Include untracked files in the analysis',
       '      --upload            Upload to ' + UPLOAD_PROVIDER + ' and print a public URL',
       '      --no-open           Do not open the report in your browser',
@@ -364,10 +398,12 @@ function createZenbinPageId (fileBaseName) {
 /**
  * Execute a git command and return stdout.
  * @param {string[]} args
+ * @param {string} [cwd]
  * @returns {string}
  */
-function runGitCommand (args) {
+function runGitCommand (args, cwd) {
   return execFileSync('git', args, {
+    cwd,
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
     maxBuffer: GIT_COMMAND_MAX_BUFFER,
@@ -377,13 +413,14 @@ function runGitCommand (args) {
 /**
  * List repository files as POSIX-style relative paths.
  * @param {boolean} includeUntracked
+ * @param {string} repoRoot
  * @returns {string[]}
  */
-function listRepoFiles (includeUntracked) {
+function listRepoFiles (includeUntracked, repoRoot) {
   const args = includeUntracked
     ? ['ls-files', '-z', '--cached', '--others', '--exclude-standard']
     : ['ls-files', '-z']
-  const stdout = runGitCommand(args)
+  const stdout = runGitCommand(args, repoRoot)
   return stdout
     .split('\u0000')
     .map(filePath => filePath.trim())
