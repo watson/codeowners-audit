@@ -1300,12 +1300,19 @@ function renderHtml (report) {
       const clamp = value => Math.max(0, Math.min(100, value))
       const scopeQueryParam = 'scope'
       const directoryRows = report.directories.filter(row => row.path !== '(root)')
-      const hasChildren = new Set()
+      const directoryRowByPath = new Map()
+      const childrenByParent = new Map()
       const knownScopes = new Set()
       for (const row of directoryRows) {
-        hasChildren.add(parentPath(row.path))
+        directoryRowByPath.set(row.path, row)
         knownScopes.add(row.path)
+        const parent = parentPath(row.path)
+        if (!childrenByParent.has(parent)) {
+          childrenByParent.set(parent, [])
+        }
+        childrenByParent.get(parent).push(row)
       }
+      directoryRowByPath.set('(root)', report.directories.find(row => row.path === '(root)'))
       let selectedPath = readScopeFromLocation()
       let directoryController
       let unownedController
@@ -1351,16 +1358,21 @@ function renderHtml (report) {
 
       function renderTopLevel () {
         const scope = selectedPath
+        const scopeKey = scope || '(root)'
         const subtitle = document.getElementById('top-level-subtitle')
         const container = document.getElementById('top-level-list')
+        const scopeRow = getDirectScopeStats(scope)
         let rows = directoryRows.filter(row => isDirectChild(row.path, scope) && row.unowned > 0)
+        if (scopeRow && scopeRow.unowned > 0) {
+          rows.push(scopeRow)
+        }
         rows = rows.sort((a, b) => {
           if (a.unowned !== b.unowned) return b.unowned - a.unowned
           if (a.total !== b.total) return b.total - a.total
           return a.path.localeCompare(b.path)
         })
 
-        subtitle.textContent = 'Scope: ' + (scope || '(root)') + ' — direct subdirectories with missing coverage'
+        subtitle.textContent = 'Scope: ' + scopeKey + ' — direct files in current directory plus direct subdirectories with missing coverage'
         container.innerHTML = ''
 
         if (!rows.length) {
@@ -1373,25 +1385,27 @@ function renderHtml (report) {
 
         for (const row of rows.slice(0, 20)) {
           const wrapper = document.createElement('div')
-          wrapper.className = 'row'
+          wrapper.className = 'row' + (row.path === scopeKey ? ' selected' : '')
 
           const header = document.createElement('div')
           header.className = 'row-header'
 
-          const title = document.createElement('button')
-          title.className = 'path path-button'
-          title.type = 'button'
-          title.textContent = relativeLabel(row.path, scope)
-          title.title = 'Drill into ' + row.path
-          if (!hasChildren.has(row.path)) {
-            title.disabled = true
-            title.title = 'Leaf directory'
+          const isCurrentScopeRow = row.path === scopeKey
+          const title = isCurrentScopeRow
+            ? document.createElement('span')
+            : document.createElement('button')
+          title.className = isCurrentScopeRow ? 'path' : 'path path-button'
+          title.textContent = isCurrentScopeRow ? 'Current directory' : relativeLabel(row.path, scope)
+          if (!isCurrentScopeRow) {
+            title.type = 'button'
+            title.title = 'Drill into ' + row.path
+            title.addEventListener('click', () => setScope(row.path))
           }
-          title.addEventListener('click', () => setScope(row.path))
 
           const meta = document.createElement('div')
           meta.className = 'pill'
-          meta.textContent = fmt.format(row.unowned) + ' unowned / ' + fmt.format(row.total) + ' total'
+          meta.textContent = fmt.format(row.unowned) + ' unowned / ' + fmt.format(row.total) +
+            (isCurrentScopeRow ? ' direct files' : ' total')
 
           header.appendChild(title)
           header.appendChild(meta)
@@ -1502,10 +1516,6 @@ function renderHtml (report) {
             pathButton.type = 'button'
             pathButton.textContent = relativeLabel(row.path, scope)
             pathButton.title = 'Drill into ' + row.path
-            if (!hasChildren.has(row.path)) {
-              pathButton.disabled = true
-              pathButton.title = 'Leaf directory'
-            }
             pathButton.addEventListener('click', () => onScopeChange(row.path))
             tr.children[0].appendChild(pathButton)
             tr.children[1].textContent = fmt.format(row.unowned)
@@ -1522,6 +1532,33 @@ function renderHtml (report) {
         }
 
         return { render }
+      }
+
+      function getDirectScopeStats (scope) {
+        const scopeKey = scope || '(root)'
+        const aggregateRow = directoryRowByPath.get(scopeKey)
+        if (!aggregateRow) return null
+
+        let total = aggregateRow.total
+        let owned = aggregateRow.owned
+        let unowned = aggregateRow.unowned
+        const childRows = childrenByParent.get(scope) || []
+        for (const child of childRows) {
+          total -= child.total
+          owned -= child.owned
+          unowned -= child.unowned
+        }
+
+        const safeTotal = Math.max(0, total)
+        const safeOwned = Math.max(0, owned)
+        const safeUnowned = Math.max(0, unowned)
+        return {
+          path: scopeKey,
+          total: safeTotal,
+          owned: safeOwned,
+          unowned: safeUnowned,
+          coverage: safeTotal ? Math.round((safeOwned / safeTotal) * 1000) / 10 : 100,
+        }
       }
 
       function setupUnownedFiles (files, getScope) {
