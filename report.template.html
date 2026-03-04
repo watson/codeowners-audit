@@ -296,7 +296,7 @@
             <th data-sort="unowned">Unowned</th>
             <th data-sort="total">Total</th>
             <th data-sort="coverage">Coverage</th>
-            <th>Suggested Team</th>
+            <th id="directory-suggested-team-header">Suggested Team</th>
             <th>Owned vs Unowned</th>
           </tr>
         </thead>
@@ -513,9 +513,15 @@
         const breadcrumbs = document.getElementById('dir-breadcrumbs')
         const upButton = document.getElementById('dir-up')
         const resetButton = document.getElementById('dir-reset')
+        const suggestionHeader = document.getElementById('directory-suggested-team-header')
+        const showSuggestionColumn = Boolean(suggestionContext && suggestionContext.enabled)
         const headerCells = Array.from(document.querySelectorAll('th[data-sort]'))
         let sortKey = 'unowned'
         let sortDirection = 'desc'
+
+        if (!showSuggestionColumn && suggestionHeader) {
+          suggestionHeader.remove()
+        }
 
         for (const headerCell of headerCells) {
           headerCell.addEventListener('click', () => {
@@ -559,7 +565,7 @@
           if (rows.length === 0) {
             const emptyRow = document.createElement('tr')
             emptyRow.className = 'empty-state-row'
-            emptyRow.innerHTML = '<td colspan="6">No directories match this view. Try changing scope, filter, or "only show directories with unowned files".</td>'
+            emptyRow.innerHTML = '<td colspan="' + (showSuggestionColumn ? '6' : '5') + '">No directories match this view. Try changing scope, filter, or "only show directories with unowned files".</td>'
             body.appendChild(emptyRow)
           }
           for (const row of rows.slice(0, 2500)) {
@@ -568,14 +574,17 @@
               '<div class="owned" style="width:' + clamp(row.coverage) + '%"></div>' +
               '<div class="unowned" style="width:' + clamp(100 - row.coverage) + '%"></div>' +
               '</div>'
-            tr.innerHTML = [
+            const cells = [
               '<td class="path"></td>',
               '<td></td>',
               '<td></td>',
               '<td></td>',
-              '<td class="path"></td>',
-              '<td>' + bar + '</td>'
-            ].join('')
+            ]
+            if (showSuggestionColumn) {
+              cells.push('<td class="path"></td>')
+            }
+            cells.push('<td>' + bar + '</td>')
+            tr.innerHTML = cells.join('')
             const pathButton = document.createElement('button')
             pathButton.className = 'path path-button'
             pathButton.type = 'button'
@@ -586,14 +595,16 @@
             tr.children[1].textContent = fmt.format(row.unowned)
             tr.children[2].textContent = fmt.format(row.total)
             tr.children[3].textContent = percent(row.coverage)
-            const suggestion = suggestionLookup.get(row.path)
-            const renderedSuggestion = formatSuggestionCell(suggestion, suggestionContext)
-            tr.children[4].textContent = renderedSuggestion.label
-            tr.children[4].title = renderedSuggestion.title
-            if (renderedSuggestion.muted) {
-              tr.children[4].classList.add('suggestion-muted')
-            } else {
-              tr.children[4].classList.remove('suggestion-muted')
+            if (showSuggestionColumn) {
+              const suggestion = suggestionLookup.get(row.path)
+              const renderedSuggestion = formatSuggestionCell(suggestion)
+              tr.children[4].textContent = renderedSuggestion.label
+              tr.children[4].title = renderedSuggestion.title
+              if (renderedSuggestion.muted) {
+                tr.children[4].classList.add('suggestion-muted')
+              } else {
+                tr.children[4].classList.remove('suggestion-muted')
+              }
             }
             body.appendChild(tr)
           }
@@ -608,14 +619,7 @@
         return { render }
       }
 
-      function formatSuggestionCell (suggestion, suggestionContext) {
-        if (!suggestionContext || !suggestionContext.enabled) {
-          return {
-            label: '(disabled)',
-            title: 'Enable --team-suggestions to compute team recommendations for uncovered directories.',
-            muted: true,
-          }
-        }
+      function formatSuggestionCell (suggestion) {
         if (!suggestion) {
           return { label: '-', title: 'No suggestion data for this directory.', muted: true }
         }
