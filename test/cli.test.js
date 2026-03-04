@@ -164,6 +164,7 @@ test('running the bin creates a report in temp dir with expected shape', (t) => 
 
   const reportData = parseReportDataFromHtml(html)
   assert.equal(reportData.options.includeUntracked, false)
+  assert.equal(Object.hasOwn(reportData, 'topLevel'), false)
   assert.ok(reportData.totals.files >= 3)
   assert.ok(reportData.unownedFiles.includes('src/unowned.js'))
   assert.equal(Array.isArray(reportData.directoryTeamSuggestions), true)

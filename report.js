@@ -993,7 +993,6 @@ function compareCodeownersDescriptor (first, second) {
  *   options: { includeUntracked: boolean, teamSuggestionsEnabled: boolean },
  *   totals: { files: number, owned: number, unowned: number, coverage: number },
  *   codeownersFiles: { path: string, dir: string, rules: number }[],
- *   topLevel: { path: string, total: number, owned: number, unowned: number, coverage: number }[],
  *   directories: { path: string, total: number, owned: number, unowned: number, coverage: number }[],
  *   unownedFiles: string[],
  *   directoryTeamSuggestions: {
@@ -1019,8 +1018,6 @@ function compareCodeownersDescriptor (first, second) {
  */
 function buildReport (repoRoot, files, codeownersDescriptors, options, progress = () => {}) {
   /** @type {Map<string, { total: number, owned: number, unowned: number }>} */
-  const topLevelStats = new Map()
-  /** @type {Map<string, { total: number, owned: number, unowned: number }>} */
   const directoryStats = new Map()
   /** @type {string[]} */
   const unownedFiles = []
@@ -1040,7 +1037,6 @@ function buildReport (repoRoot, files, codeownersDescriptors, options, progress 
       unownedFiles.push(filePath)
     }
 
-    updateStats(topLevelStats, topLevelPath(filePath), isOwned)
     updateStats(directoryStats, '', isOwned)
 
     const segments = filePath.split('/')
@@ -1072,7 +1068,6 @@ function buildReport (repoRoot, files, codeownersDescriptors, options, progress 
     coverage: toPercent(owned, files.length),
   }
 
-  const topLevel = mapToRows(topLevelStats).sort(compareRows)
   const directories = mapToRows(directoryStats).sort(compareRows)
   unownedFiles.sort((first, second) => first.localeCompare(second))
 
@@ -1091,7 +1086,6 @@ function buildReport (repoRoot, files, codeownersDescriptors, options, progress 
         rules: descriptor.rules.length,
       }
     }),
-    topLevel,
     directories,
     unownedFiles,
     directoryTeamSuggestions: [],
@@ -1183,7 +1177,7 @@ function updateStats (statsMap, key, isOwned) {
 }
 
 /**
- * Convert top-level map entries to sorted rows.
+ * Convert aggregate map entries to sorted rows.
  * @param {Map<string, { total: number, owned: number, unowned: number }>} statsMap
  * @returns {{ path: string, total: number, owned: number, unowned: number, coverage: number }[]}
  */
@@ -1214,16 +1208,6 @@ function compareRows (first, second) {
 }
 
 /**
- * Extract a file's top-level directory key.
- * @param {string} filePath
- * @returns {string}
- */
-function topLevelPath (filePath) {
-  const slashIndex = filePath.indexOf('/')
-  return slashIndex === -1 ? '(root)' : filePath.slice(0, slashIndex)
-}
-
-/**
  * Convert a ratio to a rounded percent.
  * @param {number} value
  * @param {number} total
@@ -1242,7 +1226,6 @@ function toPercent (value, total) {
  *   options: { includeUntracked: boolean, teamSuggestionsEnabled: boolean },
  *   totals: { files: number, owned: number, unowned: number, coverage: number },
  *   codeownersFiles: { path: string, dir: string, rules: number }[],
- *   topLevel: { path: string, total: number, owned: number, unowned: number, coverage: number }[],
  *   directories: { path: string, total: number, owned: number, unowned: number, coverage: number }[],
  *   unownedFiles: string[],
  *   directoryTeamSuggestions: {

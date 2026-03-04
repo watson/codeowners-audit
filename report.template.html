@@ -86,25 +86,6 @@
     .coverage-owned { background: linear-gradient(90deg, #14b8a6, #2dd4bf); height: 100%; }
     .coverage-unowned { background: linear-gradient(90deg, #f43f5e, #fb7185); height: 100%; }
 
-    .row-list { display: grid; gap: 10px; margin-top: 12px; }
-    .row {
-      padding: 10px 12px;
-      border-radius: 10px;
-      background: rgba(255, 255, 255, 0.03);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-    }
-    .row.selected {
-      border-color: rgba(139, 92, 246, 0.85);
-      box-shadow: 0 0 0 1px rgba(139, 92, 246, 0.35) inset;
-    }
-    .row-header {
-      display: flex;
-      justify-content: space-between;
-      gap: 12px;
-      align-items: center;
-      margin-bottom: 8px;
-      font-size: 14px;
-    }
     .path { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
     .path-button {
       background: transparent;
@@ -151,20 +132,6 @@
       flex-wrap: wrap;
     }
     .breadcrumbs .sep { opacity: 0.6; }
-    .ghost-button {
-      background: #0e1530;
-      border: 1px solid var(--border);
-      color: var(--text);
-      border-radius: 8px;
-      padding: 6px 10px;
-      cursor: pointer;
-      font-size: 13px;
-    }
-    .ghost-button[disabled] {
-      opacity: 0.5;
-      cursor: default;
-    }
-
     .controls {
       display: flex;
       flex-wrap: wrap;
@@ -269,21 +236,11 @@
 
     <section class="panel">
       <div class="header">
-        <h2>Top-Level Hotspots</h2>
-        <p class="muted" id="top-level-subtitle">Scope: (root) — direct subdirectories with missing coverage</p>
-      </div>
-      <div class="row-list" id="top-level-list"></div>
-    </section>
-
-    <section class="panel">
-      <div class="header">
         <h2>Directory Explorer</h2>
         <p class="muted">Filter and sort to find ownership gaps quickly</p>
       </div>
       <div class="controls">
         <div class="breadcrumbs" id="dir-breadcrumbs"></div>
-        <button class="ghost-button" id="dir-up" type="button">Up</button>
-        <button class="ghost-button" id="dir-reset" type="button">Root</button>
       </div>
       <div class="controls">
         <input id="dir-filter" type="text" placeholder="Filter directories (e.g. packages/dd-trace)" />
@@ -370,18 +327,8 @@
         const didChange = selectedPath !== normalizedScope
         selectedPath = normalizedScope
 
-        const scrollAnchor = document.getElementById('dir-filter')
-        const anchorTopBefore = scrollAnchor ? scrollAnchor.getBoundingClientRect().top : null
-        renderTopLevel()
         if (directoryController) directoryController.render()
         if (unownedController) unownedController.render()
-        if (scrollAnchor && anchorTopBefore !== null) {
-          const anchorTopAfter = scrollAnchor.getBoundingClientRect().top
-          const delta = anchorTopAfter - anchorTopBefore
-          if (delta !== 0) {
-            globalThis.scrollBy(0, delta)
-          }
-        }
 
         if (historyMode !== 'none') {
           if (historyMode === 'replace') {
@@ -402,91 +349,21 @@
       document.getElementById('coverage-owned').style.width = clamp(report.totals.coverage) + '%'
       document.getElementById('coverage-unowned').style.width = clamp(100 - report.totals.coverage) + '%'
 
-      renderTopLevel()
       renderCodeownersFiles(report.codeownersFiles)
-      directoryController = setupDirectoryTable(report.directories, suggestionByPath, suggestionMeta, () => selectedPath, setScope)
+      directoryController = setupDirectoryTable(
+        report.directories,
+        suggestionByPath,
+        suggestionMeta,
+        () => selectedPath,
+        setScope,
+        getDirectScopeStats
+      )
       unownedController = setupUnownedFiles(report.unownedFiles, () => selectedPath)
       syncScopeToLocation(selectedPath, true)
 
       globalThis.addEventListener('popstate', () => {
         setScope(readScopeFromLocation(), { historyMode: 'none' })
       })
-
-      function renderTopLevel () {
-        const scope = selectedPath
-        const scopeKey = scope || '(root)'
-        const subtitle = document.getElementById('top-level-subtitle')
-        const container = document.getElementById('top-level-list')
-        const scopeRow = getDirectScopeStats(scope)
-        let rows = directoryRows.filter(row => isDirectChild(row.path, scope) && row.unowned > 0)
-        if (scopeRow && scopeRow.unowned > 0) {
-          rows.push(scopeRow)
-        }
-        rows = rows.sort((a, b) => {
-          if (a.unowned !== b.unowned) return b.unowned - a.unowned
-          if (a.total !== b.total) return b.total - a.total
-          return a.path.localeCompare(b.path)
-        })
-
-        subtitle.textContent = 'Scope: ' + scopeKey + ' — direct files in current directory plus direct subdirectories with missing coverage'
-        container.innerHTML = ''
-
-        if (!rows.length) {
-          const empty = document.createElement('div')
-          empty.className = 'row'
-          empty.textContent = 'No child directories with missing coverage in this scope.'
-          container.appendChild(empty)
-          return
-        }
-
-        for (const row of rows.slice(0, 20)) {
-          const wrapper = document.createElement('div')
-          wrapper.className = 'row' + (row.path === scopeKey ? ' selected' : '')
-
-          const header = document.createElement('div')
-          header.className = 'row-header'
-
-          const isCurrentScopeRow = row.path === scopeKey
-          const title = isCurrentScopeRow
-            ? document.createElement('span')
-            : document.createElement('button')
-          title.className = isCurrentScopeRow ? 'path' : 'path path-button'
-          title.textContent = isCurrentScopeRow
-            ? (scope ? 'Current directory' : 'Root')
-            : relativeLabel(row.path, scope)
-          if (!isCurrentScopeRow) {
-            title.type = 'button'
-            title.title = 'Drill into ' + row.path
-            title.addEventListener('click', () => setScope(row.path))
-          }
-
-          const meta = document.createElement('div')
-          meta.className = 'pill'
-          meta.textContent = fmt.format(row.unowned) + ' unowned / ' + fmt.format(row.total) +
-            (isCurrentScopeRow ? ' direct files' : ' total')
-
-          header.appendChild(title)
-          header.appendChild(meta)
-
-          const bar = document.createElement('div')
-          bar.className = 'dir-bar'
-
-          const ownedPart = document.createElement('div')
-          ownedPart.className = 'owned'
-          ownedPart.style.width = clamp(row.coverage) + '%'
-
-          const unownedPart = document.createElement('div')
-          unownedPart.className = 'unowned'
-          unownedPart.style.width = clamp(100 - row.coverage) + '%'
-
-          bar.appendChild(ownedPart)
-          bar.appendChild(unownedPart)
-
-          wrapper.appendChild(header)
-          wrapper.appendChild(bar)
-          container.appendChild(wrapper)
-        }
-      }
 
       function renderCodeownersFiles (rows) {
         const body = document.getElementById('codeowners-table-body')
@@ -505,14 +382,12 @@
         }
       }
 
-      function setupDirectoryTable (allRows, suggestionLookup, suggestionContext, getScope, onScopeChange) {
+      function setupDirectoryTable (allRows, suggestionLookup, suggestionContext, getScope, onScopeChange, getScopeDirectStats) {
         const body = document.getElementById('directory-table-body')
         const count = document.getElementById('directory-count')
         const filterInput = document.getElementById('dir-filter')
         const onlyGaps = document.getElementById('dir-only-gaps')
         const breadcrumbs = document.getElementById('dir-breadcrumbs')
-        const upButton = document.getElementById('dir-up')
-        const resetButton = document.getElementById('dir-reset')
         const suggestionHeader = document.getElementById('directory-suggested-team-header')
         const showSuggestionColumn = Boolean(suggestionContext && suggestionContext.enabled)
         const headerCells = Array.from(document.querySelectorAll('th[data-sort]'))
@@ -538,8 +413,6 @@
 
         filterInput.addEventListener('input', render)
         onlyGaps.addEventListener('change', render)
-        upButton.addEventListener('click', () => onScopeChange(parentPath(getScope())))
-        resetButton.addEventListener('click', () => onScopeChange(''))
 
         render()
 
@@ -551,13 +424,32 @@
             if (!isDirectChild(row.path, scope)) return false
             return !onlyGaps.checked || row.unowned > 0
           })
+          const scopeRow = getScopeDirectStats(scope)
+          if (scopeRow && (!onlyGaps.checked || scopeRow.unowned > 0)) {
+            rows.push({
+              ...scopeRow,
+              isCurrentScopeRow: true,
+            })
+          }
           if (query) {
-            rows = rows.filter(row => row.path.toLowerCase().includes(query))
+            rows = rows.filter((row) => {
+              if (row.isCurrentScopeRow) {
+                const scopeKey = scope || '(root)'
+                const rowLabel = scope ? 'current directory' : 'root'
+                const searchable = (rowLabel + ' ' + scopeKey).toLowerCase()
+                return searchable.includes(query)
+              }
+              return row.path.toLowerCase().includes(query)
+            })
           }
 
           rows = rows.sort((a, b) => {
             const mult = sortDirection === 'asc' ? 1 : -1
-            if (sortKey === 'path') return a.path.localeCompare(b.path) * mult
+            if (sortKey === 'path') {
+              const aLabel = a.isCurrentScopeRow ? (scope ? 'Current directory' : 'Root') : relativeLabel(a.path, scope)
+              const bLabel = b.isCurrentScopeRow ? (scope ? 'Current directory' : 'Root') : relativeLabel(b.path, scope)
+              return aLabel.localeCompare(bLabel) * mult
+            }
             return (a[sortKey] - b[sortKey]) * mult || a.path.localeCompare(b.path)
           })
 
@@ -565,7 +457,7 @@
           if (rows.length === 0) {
             const emptyRow = document.createElement('tr')
             emptyRow.className = 'empty-state-row'
-            emptyRow.innerHTML = '<td colspan="' + (showSuggestionColumn ? '6' : '5') + '">No directories match this view. Try changing scope, filter, or "only show directories with unowned files".</td>'
+            emptyRow.innerHTML = '<td colspan="' + (showSuggestionColumn ? '6' : '5') + '">No rows match this view. Try changing scope, filter, or "only show directories with unowned files".</td>'
             body.appendChild(emptyRow)
           }
           for (const row of rows.slice(0, 2500)) {
@@ -585,20 +477,24 @@
             }
             cells.push('<td>' + bar + '</td>')
             tr.innerHTML = cells.join('')
-            const pathButton = document.createElement('button')
-            pathButton.className = 'path path-button'
-            pathButton.type = 'button'
-            pathButton.textContent = relativeLabel(row.path, scope)
-            pathButton.title = 'Drill into ' + row.path
-            pathButton.addEventListener('click', () => onScopeChange(row.path))
-            tr.children[0].appendChild(pathButton)
+            if (row.isCurrentScopeRow) {
+              tr.children[0].textContent = scope ? 'Current directory' : 'Root'
+            } else {
+              const pathButton = document.createElement('button')
+              pathButton.className = 'path path-button'
+              pathButton.type = 'button'
+              pathButton.textContent = relativeLabel(row.path, scope)
+              pathButton.title = 'Drill into ' + row.path
+              pathButton.addEventListener('click', () => onScopeChange(row.path))
+              tr.children[0].appendChild(pathButton)
+            }
             tr.children[1].textContent = fmt.format(row.unowned)
             tr.children[2].textContent = fmt.format(row.total)
             tr.children[3].textContent = percent(row.coverage)
             if (showSuggestionColumn) {
-              const suggestion = suggestionLookup && typeof suggestionLookup.get === 'function'
-                ? suggestionLookup.get(row.path)
-                : null
+              const suggestion = row.isCurrentScopeRow || !suggestionLookup || typeof suggestionLookup.get !== 'function'
+                ? null
+                : suggestionLookup.get(row.path)
               const renderedSuggestion = formatSuggestionCell(suggestion, suggestionContext)
               const suggestionCell = tr.children[4]
               if (suggestionCell) {
@@ -614,11 +510,9 @@
             body.appendChild(tr)
           }
 
-          upButton.disabled = !scope
-          resetButton.disabled = !scope
           renderBreadcrumbs(scope, breadcrumbs, onScopeChange)
           count.textContent = 'Scope: ' + (scope || '(root)') + ' — showing ' +
-            fmt.format(Math.min(rows.length, 2500)) + ' of ' + fmt.format(rows.length) + ' directories.'
+            fmt.format(Math.min(rows.length, 2500)) + ' of ' + fmt.format(rows.length) + ' rows.'
         }
 
         return { render }

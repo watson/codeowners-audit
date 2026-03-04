@@ -163,8 +163,7 @@ ZenBin currently rejects request payloads around 1 MiB and larger. Very large re
 The generated page includes:
 
 - repository-level ownership metrics and coverage bar
-- top-level hotspots for missing ownership
-- scoped directory table with coverage bars and optional team suggestions for uncovered `0%` coverage directories
+- scoped directory explorer with coverage bars, "Current directory" direct-file coverage, and optional team suggestions for uncovered `0%` coverage directories
 - searchable list of unowned files
 - detected `CODEOWNERS` files and rule counts
 
