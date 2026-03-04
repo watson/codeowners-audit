@@ -1404,7 +1404,9 @@ function renderHtml (report) {
             ? document.createElement('span')
             : document.createElement('button')
           title.className = isCurrentScopeRow ? 'path' : 'path path-button'
-          title.textContent = isCurrentScopeRow ? 'Current directory' : relativeLabel(row.path, scope)
+          title.textContent = isCurrentScopeRow
+            ? (scope ? 'Current directory' : 'Root')
+            : relativeLabel(row.path, scope)
           if (!isCurrentScopeRow) {
             title.type = 'button'
             title.title = 'Drill into ' + row.path
