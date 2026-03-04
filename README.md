@@ -68,6 +68,13 @@ For CI checks where you do not want an HTML report, use `--check`.
 | `-C, --working-dir <dir>` | Resolve git operations from this directory (alias: `--cwd`) |
 | `--include-untracked` | Include untracked (non-ignored) files in analysis |
 | `--check[=<glob>]` | CLI-only check mode. No report is generated; exits non-zero if uncovered files match the glob (default: all files via `**`) |
+| `--team-suggestions` | Suggest likely `@org/team` owners for uncovered directories with `0%` coverage |
+| `--team-suggestions-window-days <days>` | Lookback window for git history used in team suggestions (default: `365`) |
+| `--team-suggestions-top <n>` | Maximum number of candidate teams shown per directory (default: `3`) |
+| `--team-suggestions-ignore-teams <list>` | Comma-separated team slugs or `@org/slug` handles to exclude from suggestions |
+| `--github-org <org>` | Override detected GitHub org for team lookups |
+| `--github-token-env <name>` | Environment variable containing GitHub token (default: `GITHUB_TOKEN`, fallback: `GH_TOKEN`) |
+| `--github-api-base-url <url>` | Override GitHub API base URL (useful for GitHub Enterprise or tests) |
 | `--upload` | Upload report to ZenBin and print a public URL (small reports only) |
 | `--no-open` | Do not open the report automatically |
 | `-h, --help` | Show help |
@@ -145,6 +152,7 @@ The report follows practical `CODEOWNERS` resolution behavior:
 
 - Git CLI available on `PATH`
 - `curl` available on `PATH` when using `--upload`
+- GitHub token with org/team read permissions when using `--team-suggestions` (for example `read:org` on classic PATs)
 
 ## Upload size note
 
@@ -156,7 +164,7 @@ The generated page includes:
 
 - repository-level ownership metrics and coverage bar
 - top-level hotspots for missing ownership
-- scoped directory table with coverage bars
+- scoped directory table with coverage bars and optional team suggestions for uncovered `0%` coverage directories
 - searchable list of unowned files
 - detected `CODEOWNERS` files and rule counts
 

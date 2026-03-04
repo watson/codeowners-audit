@@ -1,5 +1,6 @@
 const assert = require('node:assert/strict')
-const { execFileSync, spawnSync } = require('node:child_process')
+const { execFileSync, spawn, spawnSync } = require('node:child_process')
+const { createServer } = require('node:http')
 const { mkdtempSync, mkdirSync, readFileSync, rmSync, unlinkSync, writeFileSync, existsSync, chmodSync } = require('node:fs')
 const { tmpdir } = require('node:os')
 const path = require('node:path')
@@ -28,11 +29,71 @@ function runCli (args, options = {}) {
   })
 }
 
-function runGit (cwd, args) {
+function runCliAsync (args, options = {}) {
+  const cliArgs = options.noOpen === false ? args : ['--no-open', ...args]
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [cliPath, ...cliArgs], {
+      cwd: options.cwd,
+      env: {
+        ...process.env,
+        ...(options.env || {}),
+      },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+
+    let stdout = ''
+    let stderr = ''
+    child.stdout.on('data', (chunk) => {
+      stdout += String(chunk)
+    })
+    child.stderr.on('data', (chunk) => {
+      stderr += String(chunk)
+    })
+    child.on('error', reject)
+    child.on('close', (status) => {
+      resolve({
+        status,
+        stdout,
+        stderr,
+      })
+    })
+  })
+}
+
+function runGit (cwd, args, options = {}) {
   execFileSync('git', args, {
     cwd,
+    env: {
+      ...process.env,
+      ...(options.env || {}),
+    },
     stdio: ['ignore', 'pipe', 'pipe'],
   })
+}
+
+function isoTimestampDaysAgo (daysAgo) {
+  return new Date(Date.now() - (daysAgo * 24 * 60 * 60 * 1000)).toISOString()
+}
+
+function commitStaged (repoDir, message, daysAgo, authorName, authorEmail) {
+  const timestamp = isoTimestampDaysAgo(daysAgo)
+  runGit(
+    repoDir,
+    [
+      '-c', 'user.name=Codeowners Audit Tests',
+      '-c', 'user.email=codeowners-audit-tests@example.com',
+      'commit',
+      '-m', message,
+    ],
+    {
+      env: {
+        GIT_AUTHOR_NAME: authorName,
+        GIT_AUTHOR_EMAIL: authorEmail,
+        GIT_AUTHOR_DATE: timestamp,
+        GIT_COMMITTER_DATE: timestamp,
+      },
+    }
+  )
 }
 
 function createRepo (t, options = {}) {
@@ -57,6 +118,10 @@ function createRepo (t, options = {}) {
   }
 
   runGit(repoDir, ['add', '.'])
+
+  if (options.remoteUrl) {
+    runGit(repoDir, ['remote', 'add', 'origin', options.remoteUrl])
+  }
 
   if (options.untrackedFiles) {
     for (const [filePath, content] of Object.entries(options.untrackedFiles)) {
@@ -100,6 +165,212 @@ test('running the bin creates a report in temp dir with expected shape', (t) => 
   assert.equal(reportData.options.includeUntracked, false)
   assert.ok(reportData.totals.files >= 3)
   assert.ok(reportData.unownedFiles.includes('src/unowned.js'))
+  assert.equal(Array.isArray(reportData.directoryTeamSuggestions), true)
+  assert.equal(reportData.directoryTeamSuggestions.length, 0)
+  assert.equal(reportData.directoryTeamSuggestionsMeta.enabled, false)
+  assert.deepEqual(reportData.directoryTeamSuggestionsMeta.ignoredTeams, [])
+})
+
+test('team suggestions map editors to repo teams for 0% covered directories', async (t) => {
+  const repoDir = createRepo(t, {
+    remoteUrl: 'git@github.com:test-org/test-repo.git',
+    trackedFiles: {
+      'pkg/uncovered/a.js': 'module.exports = "a1"\n',
+      'pkg/uncovered/b.js': 'module.exports = "b1"\n',
+    },
+  })
+
+  commitStaged(repoDir, 'initial snapshot outside window', 500, 'Bootstrap', 'bootstrap@example.com')
+
+  writeFileSync(path.join(repoDir, 'pkg/uncovered/a.js'), 'module.exports = "a2"\n', 'utf8')
+  runGit(repoDir, ['add', 'pkg/uncovered/a.js'])
+  commitStaged(repoDir, 'alice update 1', 30, 'Alice', '123+alice@users.noreply.github.com')
+
+  writeFileSync(path.join(repoDir, 'pkg/uncovered/a.js'), 'module.exports = "a3"\n', 'utf8')
+  runGit(repoDir, ['add', 'pkg/uncovered/a.js'])
+  commitStaged(repoDir, 'alice update 2', 20, 'Alice', '123+alice@users.noreply.github.com')
+
+  writeFileSync(path.join(repoDir, 'pkg/uncovered/b.js'), 'module.exports = "b2"\n', 'utf8')
+  runGit(repoDir, ['add', 'pkg/uncovered/b.js'])
+  commitStaged(repoDir, 'bob update', 10, 'Bob', '456+bob@users.noreply.github.com')
+
+  const server = createServer((req, res) => {
+    const url = new URL(req.url || '/', 'http://127.0.0.1')
+    res.setHeader('content-type', 'application/json')
+    if (url.pathname === '/repos/test-org/test-repo/teams') {
+      res.end(JSON.stringify([
+        { slug: 'alpha-team', name: 'Alpha Team' },
+        { slug: 'beta-team', name: 'Beta Team' },
+      ]))
+      return
+    }
+    if (url.pathname === '/orgs/test-org/teams/alpha-team/members') {
+      res.end(JSON.stringify([
+        { login: 'alice' },
+      ]))
+      return
+    }
+    if (url.pathname === '/orgs/test-org/teams/beta-team/members') {
+      res.end(JSON.stringify([
+        { login: 'bob' },
+      ]))
+      return
+    }
+    res.statusCode = 404
+    res.end(JSON.stringify({ message: 'not found' }))
+  })
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  t.after(() => {
+    server.close()
+  })
+  const address = server.address()
+  assert.ok(address && typeof address === 'object')
+  const apiBaseUrl = 'http://127.0.0.1:' + address.port
+
+  const result = await runCliAsync(
+    [
+      '--team-suggestions',
+      '--github-org', 'test-org',
+      '--github-token-env', 'TEST_GH_TOKEN',
+      '--github-api-base-url', apiBaseUrl,
+      '--output', 'team-suggestions.html',
+    ],
+    {
+      cwd: repoDir,
+      env: {
+        TEST_GH_TOKEN: 'test-token',
+      },
+    }
+  )
+  assert.equal(result.status, 0, result.stderr)
+
+  const html = readFileSync(path.join(repoDir, 'team-suggestions.html'), 'utf8')
+  const reportData = parseReportDataFromHtml(html)
+  assert.equal(reportData.directoryTeamSuggestionsMeta.enabled, true)
+  assert.equal(reportData.directoryTeamSuggestionsMeta.org, 'test-org')
+  assert.equal(reportData.directoryTeamSuggestionsMeta.source, 'repo-teams')
+
+  const suggestion = reportData.directoryTeamSuggestions.find(row => row.path === 'pkg/uncovered')
+  assert.ok(suggestion, 'should include suggestion for the uncovered folder')
+  assert.equal(suggestion.status, 'ok')
+  assert.equal(suggestion.candidates[0].team, '@test-org/alpha-team')
+  assert.equal(suggestion.totalEdits, 3)
+  assert.equal(suggestion.mappedEdits, 3)
+})
+
+test('team suggestions return no-auth status when token is missing', (t) => {
+  const repoDir = createRepo(t, {
+    remoteUrl: 'git@github.com:test-org/test-repo.git',
+    trackedFiles: {
+      'pkg/uncovered/a.js': 'module.exports = "a1"\n',
+    },
+  })
+
+  commitStaged(repoDir, 'initial snapshot', 500, 'Bootstrap', 'bootstrap@example.com')
+  writeFileSync(path.join(repoDir, 'pkg/uncovered/a.js'), 'module.exports = "a2"\n', 'utf8')
+  runGit(repoDir, ['add', 'pkg/uncovered/a.js'])
+  commitStaged(repoDir, 'alice update', 10, 'Alice', '123+alice@users.noreply.github.com')
+
+  const result = runCli(
+    [
+      '--team-suggestions',
+      '--github-org', 'test-org',
+      '--github-token-env', 'TEST_GH_TOKEN',
+      '--output', 'no-auth-suggestions.html',
+    ],
+    { cwd: repoDir }
+  )
+  assert.equal(result.status, 0, result.stderr)
+  const html = readFileSync(path.join(repoDir, 'no-auth-suggestions.html'), 'utf8')
+  const reportData = parseReportDataFromHtml(html)
+
+  const suggestion = reportData.directoryTeamSuggestions.find(row => row.path === 'pkg/uncovered')
+  assert.ok(suggestion, 'should include suggestion diagnostics for uncovered folder')
+  assert.equal(suggestion.status, 'no-auth')
+  assert.equal(reportData.directoryTeamSuggestionsMeta.enabled, true)
+  assert.match(
+    reportData.directoryTeamSuggestionsMeta.warnings.join('\n'),
+    /Missing token/
+  )
+})
+
+test('team suggestions support ignored team list', async (t) => {
+  const repoDir = createRepo(t, {
+    remoteUrl: 'git@github.com:test-org/test-repo.git',
+    trackedFiles: {
+      'pkg/uncovered/a.js': 'module.exports = "a1"\n',
+      'pkg/uncovered/b.js': 'module.exports = "b1"\n',
+    },
+  })
+
+  commitStaged(repoDir, 'initial snapshot outside window', 500, 'Bootstrap', 'bootstrap@example.com')
+
+  writeFileSync(path.join(repoDir, 'pkg/uncovered/a.js'), 'module.exports = "a2"\n', 'utf8')
+  runGit(repoDir, ['add', 'pkg/uncovered/a.js'])
+  commitStaged(repoDir, 'alice update 1', 30, 'Alice', '123+alice@users.noreply.github.com')
+
+  writeFileSync(path.join(repoDir, 'pkg/uncovered/a.js'), 'module.exports = "a3"\n', 'utf8')
+  runGit(repoDir, ['add', 'pkg/uncovered/a.js'])
+  commitStaged(repoDir, 'alice update 2', 20, 'Alice', '123+alice@users.noreply.github.com')
+
+  writeFileSync(path.join(repoDir, 'pkg/uncovered/b.js'), 'module.exports = "b2"\n', 'utf8')
+  runGit(repoDir, ['add', 'pkg/uncovered/b.js'])
+  commitStaged(repoDir, 'bob update', 10, 'Bob', '456+bob@users.noreply.github.com')
+
+  const server = createServer((req, res) => {
+    const url = new URL(req.url || '/', 'http://127.0.0.1')
+    res.setHeader('content-type', 'application/json')
+    if (url.pathname === '/repos/test-org/test-repo/teams') {
+      res.end(JSON.stringify([
+        { slug: 'alpha-team', name: 'Alpha Team' },
+        { slug: 'beta-team', name: 'Beta Team' },
+      ]))
+      return
+    }
+    if (url.pathname === '/orgs/test-org/teams/alpha-team/members') {
+      res.end(JSON.stringify([{ login: 'alice' }]))
+      return
+    }
+    if (url.pathname === '/orgs/test-org/teams/beta-team/members') {
+      res.end(JSON.stringify([{ login: 'bob' }]))
+      return
+    }
+    res.statusCode = 404
+    res.end(JSON.stringify({ message: 'not found' }))
+  })
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  t.after(() => {
+    server.close()
+  })
+  const address = server.address()
+  assert.ok(address && typeof address === 'object')
+  const apiBaseUrl = 'http://127.0.0.1:' + address.port
+
+  const result = await runCliAsync(
+    [
+      '--team-suggestions',
+      '--github-org', 'test-org',
+      '--github-token-env', 'TEST_GH_TOKEN',
+      '--github-api-base-url', apiBaseUrl,
+      '--team-suggestions-ignore-teams', 'alpha-team',
+      '--output', 'ignore-team-suggestions.html',
+    ],
+    {
+      cwd: repoDir,
+      env: {
+        TEST_GH_TOKEN: 'test-token',
+      },
+    }
+  )
+  assert.equal(result.status, 0, result.stderr)
+
+  const html = readFileSync(path.join(repoDir, 'ignore-team-suggestions.html'), 'utf8')
+  const reportData = parseReportDataFromHtml(html)
+  const suggestion = reportData.directoryTeamSuggestions.find(row => row.path === 'pkg/uncovered')
+  assert.ok(suggestion)
+  assert.equal(suggestion.status, 'ok')
+  assert.equal(suggestion.candidates[0].team, '@test-org/beta-team')
+  assert.deepEqual(reportData.directoryTeamSuggestionsMeta.ignoredTeams, ['alpha-team'])
 })
 
 test('output path options write to the requested location', (t) => {
@@ -321,6 +592,9 @@ test('--help prints usage without failing', (t) => {
   assert.match(result.stdout, /--working-dir/)
   assert.match(result.stdout, /--no-open/)
   assert.match(result.stdout, /--check/)
+  assert.match(result.stdout, /--team-suggestions/)
+  assert.match(result.stdout, /--team-suggestions-ignore-teams/)
+  assert.match(result.stdout, /--github-token-env/)
   assert.match(result.stdout, /--version/)
 })
 
@@ -527,4 +801,16 @@ test('unknown and invalid options fail with a useful error', (t) => {
   const missingCheckGlobResult = runCli(['--check='], { cwd: repoDir })
   assert.equal(missingCheckGlobResult.status, 2)
   assert.match(missingCheckGlobResult.stderr, /Missing value for --check/)
+
+  const missingSuggestionsWindowResult = runCli(['--team-suggestions-window-days'], { cwd: repoDir })
+  assert.equal(missingSuggestionsWindowResult.status, 2)
+  assert.match(missingSuggestionsWindowResult.stderr, /Missing value for --team-suggestions-window-days/)
+
+  const invalidSuggestionsTopResult = runCli(['--team-suggestions-top=0'], { cwd: repoDir })
+  assert.equal(invalidSuggestionsTopResult.status, 2)
+  assert.match(invalidSuggestionsTopResult.stderr, /--team-suggestions-top must be >= 1/)
+
+  const missingIgnoreTeamsResult = runCli(['--team-suggestions-ignore-teams'], { cwd: repoDir })
+  assert.equal(missingIgnoreTeamsResult.status, 2)
+  assert.match(missingIgnoreTeamsResult.stderr, /Missing value for --team-suggestions-ignore-teams/)
 })
