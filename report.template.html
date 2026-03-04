@@ -204,6 +204,13 @@
       border-bottom: 1px dashed rgba(255, 255, 255, 0.08);
       vertical-align: top;
     }
+    .empty-state-row td {
+      padding: 14px 8px;
+      border-bottom: 0;
+      color: var(--muted);
+      text-align: center;
+      font-style: italic;
+    }
     .dir-bar {
       width: 100%;
       min-width: 180px;
@@ -549,6 +556,12 @@
           })
 
           body.innerHTML = ''
+          if (rows.length === 0) {
+            const emptyRow = document.createElement('tr')
+            emptyRow.className = 'empty-state-row'
+            emptyRow.innerHTML = '<td colspan="6">No directories match this view. Try changing scope, filter, or "only show directories with unowned files".</td>'
+            body.appendChild(emptyRow)
+          }
           for (const row of rows.slice(0, 2500)) {
             const tr = document.createElement('tr')
             const bar = '<div class="dir-bar">' +
