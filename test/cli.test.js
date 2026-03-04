@@ -236,6 +236,34 @@ test('directory CODEOWNERS pattern without trailing slash owns descendants', (t)
   assert.match(result.stdout, /CODEOWNERS check passed/)
 })
 
+test('wildcard root pattern does not own nested descendants', (t) => {
+  const repoDir = createRepo(t, {
+    codeowners: '/* @team\n',
+    trackedFiles: {
+      'nested/deep/file.js': 'module.exports = true\n',
+    },
+  })
+
+  const result = runCli(['--check', 'nested/deep/file.js'], { cwd: repoDir })
+
+  assert.equal(result.status, 1)
+  assert.match(result.stderr, /nested\/deep\/file\.js/)
+})
+
+test('wildcard in middle still allows directory descendant ownership', (t) => {
+  const repoDir = createRepo(t, {
+    codeowners: '/packages/*/test-crashtracking @team\n',
+    trackedFiles: {
+      'packages/dd-trace/test-crashtracking/crashtracker.spec.js': 'module.exports = true\n',
+    },
+  })
+
+  const result = runCli(['--check', 'packages/dd-trace/test-crashtracking/crashtracker.spec.js'], { cwd: repoDir })
+
+  assert.equal(result.status, 0, result.stderr)
+  assert.match(result.stdout, /CODEOWNERS check passed/)
+})
+
 test('top-level .github/CODEOWNERS applies rules repository-wide', (t) => {
   const repoDir = createRepo(t, {
     codeowners: '/does-not-match-anything @fallback\n',

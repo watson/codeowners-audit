@@ -664,7 +664,9 @@ function createPatternMatcher (rawPattern, options = {}) {
   }
 
   const patternSource = globToRegexSource(pattern)
-  const descendantSuffix = (directoryOnly || includeDescendants) ? '(?:/.*)?' : ''
+  const lastSegment = pattern.split('/').at(-1) || ''
+  const lastSegmentHasWildcards = lastSegment.includes('*') || lastSegment.includes('?')
+  const descendantSuffix = (directoryOnly || (includeDescendants && !lastSegmentHasWildcards)) ? '(?:/.*)?' : ''
   if (anchored) {
     const anchoredRegex = new RegExp('^' + patternSource + descendantSuffix + '$')
     return (scopePath) => anchoredRegex.test(scopePath)
