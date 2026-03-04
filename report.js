@@ -1,0 +1,1435 @@
+#!/usr/bin/env node
+'use strict'
+
+/* eslint-disable no-console */
+
+const { execFileSync } = require('node:child_process')
+const { mkdirSync, readFileSync, writeFileSync } = require('node:fs')
+const { tmpdir } = require('node:os')
+const path = require('node:path')
+
+const DEFAULT_OUTPUT_FILE_NAME = 'codeowners-gaps-report.html'
+const DEFAULT_OUTPUT_PATH = path.join(tmpdir(), 'codeowners-report', DEFAULT_OUTPUT_FILE_NAME)
+const UPLOAD_PROVIDER = 'zenbin'
+const ZENBIN_BASE_URL = 'https://zenbin.org'
+
+main()
+
+/**
+ * Run the report generation flow.
+ * @returns {void}
+ */
+function main () {
+  try {
+    const options = parseArgs(process.argv.slice(2))
+
+    if (options.help) {
+      printUsage()
+      return
+    }
+
+    const repoRoot = runGitCommand(['rev-parse', '--show-toplevel']).trim()
+    process.chdir(repoRoot)
+
+    const allRepoFiles = listRepoFiles(options.includeUntracked)
+    const codeownersFilePaths = allRepoFiles.filter(isCodeownersFile)
+
+    if (codeownersFilePaths.length === 0) {
+      throw new Error('No CODEOWNERS files found in this repository.')
+    }
+
+    const codeownersDescriptors = codeownersFilePaths
+      .map(codeownersPath => loadCodeownersDescriptor(repoRoot, codeownersPath))
+      .sort(compareCodeownersDescriptor)
+
+    const outputAbsolutePath = path.resolve(repoRoot, options.outputPath)
+    const outputRelativePath = toPosixPath(path.relative(repoRoot, outputAbsolutePath))
+    const filesToAnalyze = allRepoFiles.filter(filePath => filePath !== outputRelativePath)
+    const report = buildReport(repoRoot, filesToAnalyze, codeownersDescriptors, options)
+    const html = renderHtml(report)
+
+    mkdirSync(path.dirname(outputAbsolutePath), { recursive: true })
+    writeFileSync(outputAbsolutePath, html, 'utf8')
+
+    console.log(
+      'Wrote CODEOWNERS gap report to %s (%d analyzed files, %d unowned).',
+      outputAbsolutePath,
+      report.totals.files,
+      report.totals.unowned
+    )
+
+    /** @type {string} */
+    let reportLocation = outputAbsolutePath
+    if (options.upload) {
+      const uploadUrl = uploadReport(outputAbsolutePath)
+      reportLocation = uploadUrl
+      console.log('Uploaded report (%s): %s', UPLOAD_PROVIDER, uploadUrl)
+    }
+
+    if (options.open) {
+      try {
+        openReportInBrowser(reportLocation)
+        console.log('Opened report in browser: %s', reportLocation)
+      } catch (error) {
+        console.warn(
+          'Could not open report in browser (%s). Re-run with --no-open to disable automatic opening.',
+          formatCommandError(error)
+        )
+      }
+    }
+  } catch (error) {
+    console.error('Failed to generate CODEOWNERS gap report:')
+    console.error(String(error && error.stack ? error.stack : error))
+    process.exit(1)
+  }
+}
+
+/**
+ * Parse command-line arguments.
+ * @param {string[]} args
+ * @returns {{
+ *   outputPath: string,
+ *   includeUntracked: boolean,
+ *   upload: boolean,
+ *   open: boolean,
+ *   help: boolean
+ * }}
+ */
+function parseArgs (args) {
+  let outputPath = DEFAULT_OUTPUT_PATH
+  let outputPathSetExplicitly = false
+  let outputDir = null
+  let outputDirSetExplicitly = false
+  let includeUntracked = false
+  let upload = false
+  let open = true
+  let help = false
+
+  for (let index = 0; index < args.length; index++) {
+    const arg = args[index]
+    if (arg === '--output' || arg === '-o') {
+      outputPath = args[index + 1]
+      outputPathSetExplicitly = true
+      index++
+      continue
+    }
+
+    if (arg.startsWith('--output=')) {
+      outputPath = arg.slice('--output='.length)
+      outputPathSetExplicitly = true
+      continue
+    }
+
+    if (arg === '--output-dir') {
+      outputDir = args[index + 1]
+      outputDirSetExplicitly = true
+      index++
+      continue
+    }
+
+    if (arg.startsWith('--output-dir=')) {
+      outputDir = arg.slice('--output-dir='.length)
+      outputDirSetExplicitly = true
+      continue
+    }
+
+    if (arg === '--include-untracked') {
+      includeUntracked = true
+      continue
+    }
+
+    if (arg === '--upload') {
+      upload = true
+      continue
+    }
+
+    if (arg === '--no-open') {
+      open = false
+      continue
+    }
+
+    if (arg === '--help' || arg === '-h') {
+      help = true
+      continue
+    }
+
+    throw new Error('Unknown argument: ' + arg)
+  }
+
+  if (!help && !outputPath) {
+    throw new Error('Missing value for --output.')
+  }
+
+  if (!help && outputDirSetExplicitly) {
+    if (!outputDir) {
+      throw new Error('Missing value for --output-dir.')
+    }
+
+    outputPath = outputPathSetExplicitly
+      ? (path.isAbsolute(outputPath) ? outputPath : path.join(outputDir, outputPath))
+      : path.join(outputDir, DEFAULT_OUTPUT_FILE_NAME)
+  }
+
+  return {
+    outputPath,
+    includeUntracked,
+    upload,
+    open,
+    help,
+  }
+}
+
+/**
+ * Print command usage.
+ * @returns {void}
+ */
+function printUsage () {
+  console.log(
+    [
+      'Usage: codeowners-report [options]',
+      '',
+      'Options:',
+      '  -o, --output <path>     Output HTML file path (default: ' + DEFAULT_OUTPUT_PATH + ')',
+      '      --output-dir <dir>  Output directory for the generated HTML report',
+      '      --include-untracked Include untracked files in the analysis',
+      '      --upload            Upload to ' + UPLOAD_PROVIDER + ' and print a public URL',
+      '      --no-open           Do not open the report in your browser',
+      '  -h, --help              Show this help',
+    ].join('\n')
+  )
+}
+
+/**
+ * Open a report target in the system browser.
+ * @param {string} target
+ * @returns {void}
+ */
+function openReportInBrowser (target) {
+  if (process.platform === 'darwin') {
+    execFileSync('open', [target], {
+      stdio: ['ignore', 'ignore', 'pipe'],
+    })
+    return
+  }
+
+  if (process.platform === 'win32') {
+    execFileSync('cmd', ['/c', 'start', '', target], {
+      windowsHide: true,
+      stdio: ['ignore', 'ignore', 'pipe'],
+    })
+    return
+  }
+
+  execFileSync('xdg-open', [target], {
+    stdio: ['ignore', 'ignore', 'pipe'],
+  })
+}
+
+/**
+ * Get a readable message from a child-process error.
+ * @param {unknown} error
+ * @returns {string}
+ */
+function formatCommandError (error) {
+  if (error && typeof error === 'object' && 'stderr' in error) {
+    const stderr = String(error.stderr || '').trim()
+    if (stderr) return stderr
+  }
+
+  if (error && typeof error === 'object' && 'message' in error) {
+    return String(error.message)
+  }
+
+  return String(error)
+}
+
+/**
+ * Upload the generated HTML report.
+ * @param {string} reportPath
+ * @returns {string}
+ */
+function uploadReport (reportPath) {
+  return uploadToZenbin(reportPath)
+}
+
+/**
+ * Upload a file to ZenBin and return the public URL.
+ * @param {string} filePath
+ * @returns {string}
+ */
+function uploadToZenbin (filePath) {
+  const fileBaseName = path.basename(filePath, path.extname(filePath))
+  const pageId = createZenbinPageId(fileBaseName)
+  const payload = JSON.stringify({ html: readFileSync(filePath, 'utf8') })
+
+  let stdout
+  try {
+    stdout = execFileSync('curl', [
+      '--silent',
+      '--show-error',
+      '--fail',
+      '-X',
+      'POST',
+      '-H',
+      'Content-Type: application/json',
+      '--data-binary',
+      '@-',
+      ZENBIN_BASE_URL + '/v1/pages/' + pageId,
+    ], {
+      encoding: 'utf8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+      input: payload,
+    })
+  } catch (error) {
+    const stderr = error && typeof error === 'object' && 'stderr' in error
+      ? String(error.stderr || '').trim()
+      : ''
+    throw new Error('Upload failed (' + UPLOAD_PROVIDER + '): ' + (stderr || String(error)))
+  }
+
+  /** @type {{ url?: string }} */
+  let response
+  try {
+    response = JSON.parse(String(stdout))
+  } catch {
+    throw new Error(
+      'Upload failed (' + UPLOAD_PROVIDER + '): invalid JSON response: ' + JSON.stringify(String(stdout).trim())
+    )
+  }
+
+  const maybeUrl = response && typeof response.url === 'string' ? response.url.trim() : ''
+  if (!/^https?:\/\//.test(maybeUrl)) {
+    throw new Error('Upload failed (' + UPLOAD_PROVIDER + '): missing URL in response: ' + JSON.stringify(response))
+  }
+
+  return maybeUrl
+}
+
+/**
+ * Build a stable-ish unique page id for ZenBin uploads.
+ * @param {string} fileBaseName
+ * @returns {string}
+ */
+function createZenbinPageId (fileBaseName) {
+  const normalizedBase = fileBaseName
+    .toLowerCase()
+    .replaceAll(/[^a-z0-9]+/g, '-')
+    .replaceAll(/^-+|-+$/g, '')
+    .slice(0, 40)
+
+  const base = normalizedBase || 'report'
+  const timestamp = Date.now().toString(36)
+  const randomPart = Math.random().toString(36).slice(2, 8)
+  return base + '-' + timestamp + '-' + randomPart
+}
+
+/**
+ * Execute a git command and return stdout.
+ * @param {string[]} args
+ * @returns {string}
+ */
+function runGitCommand (args) {
+  return execFileSync('git', args, {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
+}
+
+/**
+ * List repository files as POSIX-style relative paths.
+ * @param {boolean} includeUntracked
+ * @returns {string[]}
+ */
+function listRepoFiles (includeUntracked) {
+  const args = includeUntracked
+    ? ['ls-files', '-z', '--cached', '--others', '--exclude-standard']
+    : ['ls-files', '-z']
+  const stdout = runGitCommand(args)
+  return stdout
+    .split('\u0000')
+    .map(filePath => filePath.trim())
+    .filter(Boolean)
+    .map(toPosixPath)
+}
+
+/**
+ * Determine if a path points to a CODEOWNERS file.
+ * @param {string} filePath
+ * @returns {boolean}
+ */
+function isCodeownersFile (filePath) {
+  return path.posix.basename(filePath) === 'CODEOWNERS'
+}
+
+/**
+ * Normalize a path to POSIX separators.
+ * @param {string} value
+ * @returns {string}
+ */
+function toPosixPath (value) {
+  return value.split(path.sep).join('/')
+}
+
+/**
+ * Load a CODEOWNERS descriptor with parsed rules.
+ * @param {string} repoRoot
+ * @param {string} codeownersPath
+ * @returns {{
+ *   path: string,
+ *   dir: string,
+ *   rules: {
+ *     pattern: string,
+ *     owners: string[],
+ *     matches: (scopePath: string, repoPath: string) => boolean
+ *   }[]
+ * }}
+ */
+function loadCodeownersDescriptor (repoRoot, codeownersPath) {
+  const codeownersDir = path.posix.dirname(codeownersPath)
+  const descriptorDir = codeownersDir === '.' ? '' : codeownersDir
+  const fileContent = readFileSync(path.join(repoRoot, codeownersPath), 'utf8')
+  const rules = parseCodeowners(fileContent)
+
+  return {
+    path: codeownersPath,
+    dir: descriptorDir,
+    rules,
+  }
+}
+
+/**
+ * Parse CODEOWNERS content into rule matchers.
+ * @param {string} fileContent
+ * @returns {{ pattern: string, owners: string[], matches: (scopePath: string, repoPath: string) => boolean }[]}
+ */
+function parseCodeowners (fileContent) {
+  const lines = fileContent.split(/\r?\n/)
+  const rules = []
+
+  for (const line of lines) {
+    const withoutComment = stripInlineComment(line).trim()
+    if (!withoutComment) continue
+
+    const tokens = tokenizeCodeownersLine(withoutComment).map(unescapeToken)
+    if (tokens.length < 2) continue
+
+    const pattern = tokens[0]
+    const owners = tokens.slice(1).filter(Boolean)
+    if (!owners.length) continue
+    if (pattern.startsWith('!')) continue // Negation is not supported in CODEOWNERS.
+
+    rules.push({
+      pattern,
+      owners,
+      matches: createPatternMatcher(pattern),
+    })
+  }
+
+  return rules
+}
+
+/**
+ * Remove inline comments, preserving escaped "#".
+ * @param {string} line
+ * @returns {string}
+ */
+function stripInlineComment (line) {
+  let escaped = false
+  for (let index = 0; index < line.length; index++) {
+    const char = line[index]
+    if (char === '#' && !escaped) {
+      return line.slice(0, index)
+    }
+
+    escaped = char === '\\' && !escaped
+    if (char !== '\\') {
+      escaped = false
+    }
+  }
+  return line
+}
+
+/**
+ * Split a CODEOWNERS line into tokens while preserving escaped spaces.
+ * @param {string} line
+ * @returns {string[]}
+ */
+function tokenizeCodeownersLine (line) {
+  return line.match(/(?:\\.|[^\s])+/g) || []
+}
+
+/**
+ * Unescape CODEOWNERS token sequences.
+ * @param {string} token
+ * @returns {string}
+ */
+function unescapeToken (token) {
+  return token.replaceAll(/\\(.)/g, '$1')
+}
+
+/**
+ * Build a matcher for a CODEOWNERS pattern.
+ * @param {string} rawPattern
+ * @returns {(scopePath: string, repoPath: string) => boolean}
+ */
+function createPatternMatcher (rawPattern) {
+  const directoryOnly = rawPattern.endsWith('/')
+  const anchored = rawPattern.startsWith('/')
+  const pattern = rawPattern.replace(/^\/+/, '').replace(/\/+$/, '')
+  if (!pattern) {
+    return () => false
+  }
+
+  const patternSource = globToRegexSource(pattern)
+  if (anchored) {
+    const anchoredRegex = new RegExp('^' + patternSource + (directoryOnly ? '(?:/.*)?' : '') + '$')
+    return (scopePath) => anchoredRegex.test(scopePath)
+  }
+
+  const unanchoredRegex = new RegExp('(?:^|/)' + patternSource + (directoryOnly ? '(?:/.*)?' : '') + '$')
+  return (scopePath, repoPath) => unanchoredRegex.test(scopePath) || unanchoredRegex.test(repoPath)
+}
+
+/**
+ * Convert a glob-like CODEOWNERS pattern to regex source.
+ * @param {string} pattern
+ * @returns {string}
+ */
+function globToRegexSource (pattern) {
+  let source = ''
+  for (let index = 0; index < pattern.length; index++) {
+    const char = pattern[index]
+    if (char === '*') {
+      if (pattern[index + 1] === '*') {
+        source += '.*'
+        index++
+      } else {
+        source += '[^/]*'
+      }
+      continue
+    }
+
+    if (char === '?') {
+      source += '[^/]'
+      continue
+    }
+
+    source += escapeRegexChar(char)
+  }
+  return source
+}
+
+/**
+ * Escape regex-special characters.
+ * @param {string} char
+ * @returns {string}
+ */
+function escapeRegexChar (char) {
+  return /[\\^$.*+?()[\]{}|]/.test(char) ? '\\' + char : char
+}
+
+/**
+ * Sort CODEOWNERS files from broadest to narrowest scope.
+ * @param {{ dir: string, path: string }} first
+ * @param {{ dir: string, path: string }} second
+ * @returns {number}
+ */
+function compareCodeownersDescriptor (first, second) {
+  const firstDepth = first.dir ? first.dir.split('/').length : 0
+  const secondDepth = second.dir ? second.dir.split('/').length : 0
+  if (firstDepth !== secondDepth) return firstDepth - secondDepth
+  return first.path.localeCompare(second.path)
+}
+
+/**
+ * Build the report payload consumed by the HTML page.
+ * @param {string} repoRoot
+ * @param {string[]} files
+ * @param {{
+ *   path: string,
+ *   dir: string,
+ *   rules: {
+ *     pattern: string,
+ *     owners: string[],
+ *     matches: (scopePath: string, repoPath: string) => boolean
+ *   }[]
+ * }[]} codeownersDescriptors
+ * @param {{ includeUntracked: boolean }} options
+ * @returns {{
+ *   repoName: string,
+ *   generatedAt: string,
+ *   options: { includeUntracked: boolean },
+ *   totals: { files: number, owned: number, unowned: number, coverage: number },
+ *   codeownersFiles: { path: string, dir: string, rules: number }[],
+ *   topLevel: { path: string, total: number, owned: number, unowned: number, coverage: number }[],
+ *   directories: { path: string, total: number, owned: number, unowned: number, coverage: number }[],
+ *   unownedFiles: string[]
+ * }}
+ */
+function buildReport (repoRoot, files, codeownersDescriptors, options) {
+  /** @type {Map<string, { total: number, owned: number, unowned: number }>} */
+  const topLevelStats = new Map()
+  /** @type {Map<string, { total: number, owned: number, unowned: number }>} */
+  const directoryStats = new Map()
+  /** @type {string[]} */
+  const unownedFiles = []
+
+  let owned = 0
+  let unowned = 0
+
+  for (const filePath of files) {
+    const owners = resolveOwners(filePath, codeownersDescriptors)
+    const isOwned = Array.isArray(owners) && owners.length > 0
+
+    if (isOwned) {
+      owned++
+    } else {
+      unowned++
+      unownedFiles.push(filePath)
+    }
+
+    updateStats(topLevelStats, topLevelPath(filePath), isOwned)
+    updateStats(directoryStats, '', isOwned)
+
+    const segments = filePath.split('/')
+    let currentPath = ''
+    for (let index = 0; index < segments.length - 1; index++) {
+      currentPath = currentPath ? currentPath + '/' + segments[index] : segments[index]
+      updateStats(directoryStats, currentPath, isOwned)
+    }
+  }
+
+  const totals = {
+    files: files.length,
+    owned,
+    unowned,
+    coverage: toPercent(owned, files.length),
+  }
+
+  const topLevel = mapToRows(topLevelStats).sort(compareRows)
+  const directories = mapToRows(directoryStats).sort(compareRows)
+  unownedFiles.sort((first, second) => first.localeCompare(second))
+
+  return {
+    repoName: path.basename(repoRoot),
+    generatedAt: new Date().toISOString(),
+    options: {
+      includeUntracked: options.includeUntracked,
+    },
+    totals,
+    codeownersFiles: codeownersDescriptors.map((descriptor) => {
+      return {
+        path: descriptor.path,
+        dir: descriptor.dir || '.',
+        rules: descriptor.rules.length,
+      }
+    }),
+    topLevel,
+    directories,
+    unownedFiles,
+  }
+}
+
+/**
+ * Resolve matching owners for a file by applying CODEOWNERS files from broad to narrow.
+ * @param {string} filePath
+ * @param {{
+ *   dir: string,
+ *   rules: {
+ *     owners: string[],
+ *     matches: (scopePath: string, repoPath: string) => boolean
+ *   }[]
+ * }[]} codeownersDescriptors
+ * @returns {string[]|undefined}
+ */
+function resolveOwners (filePath, codeownersDescriptors) {
+  /** @type {string[]|undefined} */
+  let owners
+
+  for (const descriptor of codeownersDescriptors) {
+    if (descriptor.dir && !pathIsInside(filePath, descriptor.dir)) continue
+
+    const scopePath = descriptor.dir ? filePath.slice(descriptor.dir.length + 1) : filePath
+    const matchedOwners = findMatchingOwners(scopePath, filePath, descriptor.rules)
+    if (matchedOwners) {
+      owners = matchedOwners
+    }
+  }
+
+  return owners
+}
+
+/**
+ * Check whether filePath is inside dirPath (POSIX relative paths).
+ * @param {string} filePath
+ * @param {string} dirPath
+ * @returns {boolean}
+ */
+function pathIsInside (filePath, dirPath) {
+  return filePath === dirPath || filePath.startsWith(dirPath + '/')
+}
+
+/**
+ * Find the last matching owners in a ruleset.
+ * @param {string} scopePath
+ * @param {string} repoPath
+ * @param {{ owners: string[], matches: (scopePath: string, repoPath: string) => boolean }[]} rules
+ * @returns {string[]|undefined}
+ */
+function findMatchingOwners (scopePath, repoPath, rules) {
+  /** @type {string[]|undefined} */
+  let owners
+  for (const rule of rules) {
+    if (rule.matches(scopePath, repoPath)) {
+      owners = rule.owners
+    }
+  }
+  return owners
+}
+
+/**
+ * Update aggregate stats for a key.
+ * @param {Map<string, { total: number, owned: number, unowned: number }>} statsMap
+ * @param {string} key
+ * @param {boolean} isOwned
+ * @returns {void}
+ */
+function updateStats (statsMap, key, isOwned) {
+  const existing = statsMap.get(key) || { total: 0, owned: 0, unowned: 0 }
+  existing.total++
+  if (isOwned) {
+    existing.owned++
+  } else {
+    existing.unowned++
+  }
+  statsMap.set(key, existing)
+}
+
+/**
+ * Convert top-level map entries to sorted rows.
+ * @param {Map<string, { total: number, owned: number, unowned: number }>} statsMap
+ * @returns {{ path: string, total: number, owned: number, unowned: number, coverage: number }[]}
+ */
+function mapToRows (statsMap) {
+  const rows = []
+  for (const [entryPath, stats] of statsMap.entries()) {
+    rows.push({
+      path: entryPath || '(root)',
+      total: stats.total,
+      owned: stats.owned,
+      unowned: stats.unowned,
+      coverage: toPercent(stats.owned, stats.total),
+    })
+  }
+  return rows
+}
+
+/**
+ * Compare rows by unowned count, then total count, then path.
+ * @param {{ unowned: number, total: number, path: string }} first
+ * @param {{ unowned: number, total: number, path: string }} second
+ * @returns {number}
+ */
+function compareRows (first, second) {
+  if (first.unowned !== second.unowned) return second.unowned - first.unowned
+  if (first.total !== second.total) return second.total - first.total
+  return first.path.localeCompare(second.path)
+}
+
+/**
+ * Extract a file's top-level directory key.
+ * @param {string} filePath
+ * @returns {string}
+ */
+function topLevelPath (filePath) {
+  const slashIndex = filePath.indexOf('/')
+  return slashIndex === -1 ? '(root)' : filePath.slice(0, slashIndex)
+}
+
+/**
+ * Convert a ratio to a rounded percent.
+ * @param {number} value
+ * @param {number} total
+ * @returns {number}
+ */
+function toPercent (value, total) {
+  if (!total) return 100
+  return Math.round((value / total) * 1000) / 10
+}
+
+/**
+ * Render a complete self-contained HTML page for the report.
+ * @param {{
+ *   repoName: string,
+ *   generatedAt: string,
+ *   options: { includeUntracked: boolean },
+ *   totals: { files: number, owned: number, unowned: number, coverage: number },
+ *   codeownersFiles: { path: string, dir: string, rules: number }[],
+ *   topLevel: { path: string, total: number, owned: number, unowned: number, coverage: number }[],
+ *   directories: { path: string, total: number, owned: number, unowned: number, coverage: number }[],
+ *   unownedFiles: string[]
+ * }} report
+ * @returns {string}
+ */
+function renderHtml (report) {
+  const serializedReport = JSON.stringify(report).replaceAll('<', String.raw`\u003c`)
+
+  return String.raw`<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CODEOWNERS Gap Report</title>
+  <style>
+    :root {
+      --bg: #0b1020;
+      --panel: #141b34;
+      --panel-2: #1b2448;
+      --text: #e4e7f2;
+      --muted: #96a0c6;
+      --good: #2dd4bf;
+      --bad: #fb7185;
+      --accent: #8b5cf6;
+      --border: #2a3568;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 28px;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      background: radial-gradient(circle at top right, #1a2142 0%, var(--bg) 55%);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    h1, h2, h3 { margin: 0; }
+    p { margin: 0; color: var(--muted); }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      display: grid;
+      gap: 18px;
+    }
+
+    .panel {
+      background: linear-gradient(180deg, var(--panel) 0%, var(--panel-2) 100%);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 16px;
+      box-shadow: 0 14px 30px rgba(0, 0, 0, 0.35);
+    }
+
+    .header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .summary-grid {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      margin-top: 12px;
+    }
+
+    .metric {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.07);
+      border-radius: 12px;
+      padding: 12px;
+    }
+
+    .metric .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; }
+    .metric .value { font-size: 28px; font-weight: 700; margin-top: 3px; }
+    .metric .value.bad { color: var(--bad); }
+    .metric .value.good { color: var(--good); }
+
+    .coverage-track {
+      margin-top: 12px;
+      width: 100%;
+      height: 14px;
+      background: #0b1127;
+      border-radius: 999px;
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      display: flex;
+    }
+
+    .coverage-owned { background: linear-gradient(90deg, #14b8a6, #2dd4bf); height: 100%; }
+    .coverage-unowned { background: linear-gradient(90deg, #f43f5e, #fb7185); height: 100%; }
+
+    .row-list { display: grid; gap: 10px; margin-top: 12px; }
+    .row {
+      padding: 10px 12px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .row.selected {
+      border-color: rgba(139, 92, 246, 0.85);
+      box-shadow: 0 0 0 1px rgba(139, 92, 246, 0.35) inset;
+    }
+    .row-header {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      margin-bottom: 8px;
+      font-size: 14px;
+    }
+    .path { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+    .path-button {
+      background: transparent;
+      border: 0;
+      color: var(--text);
+      font: inherit;
+      padding: 0;
+      text-align: left;
+      cursor: pointer;
+      text-decoration: underline;
+      text-decoration-color: rgba(139, 92, 246, 0.55);
+      text-decoration-thickness: 1px;
+      text-underline-offset: 2px;
+    }
+    .path-button:hover { color: #c4b5fd; }
+    .path-button[disabled] {
+      cursor: default;
+      opacity: 0.95;
+      text-decoration-style: dotted;
+      text-decoration-color: rgba(255, 255, 255, 0.3);
+    }
+    .pill {
+      font-size: 12px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      color: var(--muted);
+    }
+    .breadcrumbs {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      color: var(--muted);
+      font-size: 13px;
+      min-height: 28px;
+      flex-wrap: wrap;
+    }
+    .breadcrumbs .sep { opacity: 0.6; }
+    .ghost-button {
+      background: #0e1530;
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 8px;
+      padding: 6px 10px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    .ghost-button[disabled] {
+      opacity: 0.5;
+      cursor: default;
+    }
+
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    .controls input[type="text"] {
+      min-width: 280px;
+      flex: 1;
+      background: #0e1530;
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 8px 10px;
+      outline: none;
+    }
+    .controls label { color: var(--muted); display: flex; gap: 8px; align-items: center; font-size: 14px; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    thead th {
+      text-align: left;
+      color: var(--muted);
+      border-bottom: 1px solid var(--border);
+      padding: 8px;
+      white-space: nowrap;
+      cursor: pointer;
+      user-select: none;
+    }
+    tbody td {
+      padding: 8px;
+      border-bottom: 1px dashed rgba(255, 255, 255, 0.08);
+      vertical-align: top;
+    }
+    .dir-bar {
+      width: 100%;
+      min-width: 180px;
+      height: 10px;
+      border-radius: 999px;
+      overflow: hidden;
+      background: #0b1127;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      display: flex;
+    }
+    .dir-bar .owned { background: rgba(45, 212, 191, 0.85); }
+    .dir-bar .unowned { background: rgba(251, 113, 133, 0.9); }
+
+    .muted { color: var(--muted); }
+    .file-list {
+      max-height: 380px;
+      overflow: auto;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: rgba(0, 0, 0, 0.2);
+      padding: 10px;
+      line-height: 1.5;
+      font-size: 12px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      white-space: pre;
+    }
+
+    @media (max-width: 900px) {
+      body { padding: 14px; }
+      .header { align-items: flex-start; }
+      .controls input[type="text"] { min-width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <section class="panel">
+      <div class="header">
+        <div>
+          <h1>CODEOWNERS Gap Report</h1>
+          <p id="subtitle"></p>
+        </div>
+        <div class="pill" id="generatedAt"></div>
+      </div>
+      <div class="summary-grid">
+        <div class="metric"><div class="label">Files Scanned</div><div class="value" id="metric-files">0</div></div>
+        <div class="metric"><div class="label">Owned</div><div class="value good" id="metric-owned">0</div></div>
+        <div class="metric"><div class="label">Unowned</div><div class="value bad" id="metric-unowned">0</div></div>
+        <div class="metric"><div class="label">Coverage</div><div class="value" id="metric-coverage">0%</div></div>
+      </div>
+      <div class="coverage-track" aria-label="Coverage">
+        <div class="coverage-owned" id="coverage-owned"></div>
+        <div class="coverage-unowned" id="coverage-unowned"></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="header">
+        <h2>Top-Level Hotspots</h2>
+        <p class="muted" id="top-level-subtitle">Scope: (root) — direct subdirectories with missing coverage</p>
+      </div>
+      <div class="row-list" id="top-level-list"></div>
+    </section>
+
+    <section class="panel">
+      <div class="header">
+        <h2>Directory Explorer</h2>
+        <p class="muted">Filter and sort to find ownership gaps quickly</p>
+      </div>
+      <div class="controls">
+        <div class="breadcrumbs" id="dir-breadcrumbs"></div>
+        <button class="ghost-button" id="dir-up" type="button">Up</button>
+        <button class="ghost-button" id="dir-reset" type="button">Root</button>
+      </div>
+      <div class="controls">
+        <input id="dir-filter" type="text" placeholder="Filter directories (e.g. packages/dd-trace)" />
+        <label><input id="dir-only-gaps" type="checkbox" checked /> only show directories with unowned files</label>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th data-sort="path">Directory</th>
+            <th data-sort="unowned">Unowned</th>
+            <th data-sort="total">Total</th>
+            <th data-sort="coverage">Coverage</th>
+            <th>Owned vs Unowned</th>
+          </tr>
+        </thead>
+        <tbody id="directory-table-body"></tbody>
+      </table>
+      <p class="muted" id="directory-count"></p>
+    </section>
+
+    <section class="panel">
+      <div class="header">
+        <h2>Unowned Files</h2>
+        <p class="muted">Files with no matching owner rule</p>
+      </div>
+      <div class="controls">
+        <input id="file-filter" type="text" placeholder="Filter unowned files..." />
+      </div>
+      <div class="file-list" id="unowned-file-list"></div>
+      <p class="muted" id="file-count"></p>
+    </section>
+
+    <section class="panel">
+      <div class="header">
+        <h2>Detected CODEOWNERS Files</h2>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Path</th>
+            <th>Scope Base</th>
+            <th>Rules</th>
+          </tr>
+        </thead>
+        <tbody id="codeowners-table-body"></tbody>
+      </table>
+    </section>
+  </div>
+
+  <script type="application/json" id="report-data">${serializedReport}</script>
+  <script>
+    (function () {
+      const report = JSON.parse(document.getElementById('report-data').textContent)
+
+      const fmt = new Intl.NumberFormat('en-US')
+      const percent = value => Number(value).toFixed(1) + '%'
+      const clamp = value => Math.max(0, Math.min(100, value))
+      const scopeQueryParam = 'scope'
+      const directoryRows = report.directories.filter(row => row.path !== '(root)')
+      const hasChildren = new Set()
+      const knownScopes = new Set()
+      for (const row of directoryRows) {
+        hasChildren.add(parentPath(row.path))
+        knownScopes.add(row.path)
+      }
+      let selectedPath = readScopeFromLocation()
+      let directoryController
+      let unownedController
+
+      function setScope (nextPath, options) {
+        const historyMode = options && options.historyMode ? options.historyMode : 'push'
+        const normalizedScope = normalizeScope(nextPath)
+        const didChange = selectedPath !== normalizedScope
+        selectedPath = normalizedScope
+
+        renderTopLevel()
+        if (directoryController) directoryController.render()
+        if (unownedController) unownedController.render()
+
+        if (historyMode !== 'none') {
+          if (historyMode === 'replace') {
+            syncScopeToLocation(selectedPath, true)
+          } else if (didChange) {
+            syncScopeToLocation(selectedPath, false)
+          }
+        }
+      }
+
+      document.getElementById('subtitle').textContent =
+        report.repoName + (report.options.includeUntracked ? ' (tracked + untracked files)' : ' (tracked files)')
+      document.getElementById('generatedAt').textContent = 'Generated ' + new Date(report.generatedAt).toLocaleString()
+      document.getElementById('metric-files').textContent = fmt.format(report.totals.files)
+      document.getElementById('metric-owned').textContent = fmt.format(report.totals.owned)
+      document.getElementById('metric-unowned').textContent = fmt.format(report.totals.unowned)
+      document.getElementById('metric-coverage').textContent = percent(report.totals.coverage)
+      document.getElementById('coverage-owned').style.width = clamp(report.totals.coverage) + '%'
+      document.getElementById('coverage-unowned').style.width = clamp(100 - report.totals.coverage) + '%'
+
+      renderTopLevel()
+      renderCodeownersFiles(report.codeownersFiles)
+      directoryController = setupDirectoryTable(report.directories, () => selectedPath, setScope)
+      unownedController = setupUnownedFiles(report.unownedFiles, () => selectedPath)
+      syncScopeToLocation(selectedPath, true)
+
+      globalThis.addEventListener('popstate', () => {
+        setScope(readScopeFromLocation(), { historyMode: 'none' })
+      })
+
+      function renderTopLevel () {
+        const scope = selectedPath
+        const subtitle = document.getElementById('top-level-subtitle')
+        const container = document.getElementById('top-level-list')
+        let rows = directoryRows.filter(row => isDirectChild(row.path, scope) && row.unowned > 0)
+        rows = rows.sort((a, b) => {
+          if (a.unowned !== b.unowned) return b.unowned - a.unowned
+          if (a.total !== b.total) return b.total - a.total
+          return a.path.localeCompare(b.path)
+        })
+
+        subtitle.textContent = 'Scope: ' + (scope || '(root)') + ' — direct subdirectories with missing coverage'
+        container.innerHTML = ''
+
+        if (!rows.length) {
+          const empty = document.createElement('div')
+          empty.className = 'row'
+          empty.textContent = 'No child directories with missing coverage in this scope.'
+          container.appendChild(empty)
+          return
+        }
+
+        for (const row of rows.slice(0, 20)) {
+          const wrapper = document.createElement('div')
+          wrapper.className = 'row'
+
+          const header = document.createElement('div')
+          header.className = 'row-header'
+
+          const title = document.createElement('button')
+          title.className = 'path path-button'
+          title.type = 'button'
+          title.textContent = relativeLabel(row.path, scope)
+          title.title = 'Drill into ' + row.path
+          if (!hasChildren.has(row.path)) {
+            title.disabled = true
+            title.title = 'Leaf directory'
+          }
+          title.addEventListener('click', () => setScope(row.path))
+
+          const meta = document.createElement('div')
+          meta.className = 'pill'
+          meta.textContent = fmt.format(row.unowned) + ' unowned / ' + fmt.format(row.total) + ' total'
+
+          header.appendChild(title)
+          header.appendChild(meta)
+
+          const bar = document.createElement('div')
+          bar.className = 'dir-bar'
+
+          const ownedPart = document.createElement('div')
+          ownedPart.className = 'owned'
+          ownedPart.style.width = clamp(row.coverage) + '%'
+
+          const unownedPart = document.createElement('div')
+          unownedPart.className = 'unowned'
+          unownedPart.style.width = clamp(100 - row.coverage) + '%'
+
+          bar.appendChild(ownedPart)
+          bar.appendChild(unownedPart)
+
+          wrapper.appendChild(header)
+          wrapper.appendChild(bar)
+          container.appendChild(wrapper)
+        }
+      }
+
+      function renderCodeownersFiles (rows) {
+        const body = document.getElementById('codeowners-table-body')
+        body.innerHTML = ''
+        for (const row of rows) {
+          const tr = document.createElement('tr')
+          tr.innerHTML = [
+            '<td class="path"></td>',
+            '<td class="path"></td>',
+            '<td></td>'
+          ].join('')
+          tr.children[0].textContent = row.path
+          tr.children[1].textContent = row.dir
+          tr.children[2].textContent = fmt.format(row.rules)
+          body.appendChild(tr)
+        }
+      }
+
+      function setupDirectoryTable (allRows, getScope, onScopeChange) {
+        const body = document.getElementById('directory-table-body')
+        const count = document.getElementById('directory-count')
+        const filterInput = document.getElementById('dir-filter')
+        const onlyGaps = document.getElementById('dir-only-gaps')
+        const breadcrumbs = document.getElementById('dir-breadcrumbs')
+        const upButton = document.getElementById('dir-up')
+        const resetButton = document.getElementById('dir-reset')
+        const headerCells = Array.from(document.querySelectorAll('th[data-sort]'))
+        let sortKey = 'unowned'
+        let sortDirection = 'desc'
+
+        for (const headerCell of headerCells) {
+          headerCell.addEventListener('click', () => {
+            const clickedKey = headerCell.getAttribute('data-sort')
+            if (sortKey === clickedKey) {
+              sortDirection = sortDirection === 'desc' ? 'asc' : 'desc'
+            } else {
+              sortKey = clickedKey
+              sortDirection = clickedKey === 'path' ? 'asc' : 'desc'
+            }
+            render()
+          })
+        }
+
+        filterInput.addEventListener('input', render)
+        onlyGaps.addEventListener('change', render)
+        upButton.addEventListener('click', () => onScopeChange(parentPath(getScope())))
+        resetButton.addEventListener('click', () => onScopeChange(''))
+
+        render()
+
+        function render () {
+          const scope = getScope()
+          const query = filterInput.value.trim().toLowerCase()
+          let rows = allRows.filter(row => {
+            if (row.path === '(root)') return false
+            if (!isDirectChild(row.path, scope)) return false
+            return !onlyGaps.checked || row.unowned > 0
+          })
+          if (query) {
+            rows = rows.filter(row => row.path.toLowerCase().includes(query))
+          }
+
+          rows = rows.sort((a, b) => {
+            const mult = sortDirection === 'asc' ? 1 : -1
+            if (sortKey === 'path') return a.path.localeCompare(b.path) * mult
+            return (a[sortKey] - b[sortKey]) * mult || a.path.localeCompare(b.path)
+          })
+
+          body.innerHTML = ''
+          for (const row of rows.slice(0, 2500)) {
+            const tr = document.createElement('tr')
+            const bar = '<div class="dir-bar">' +
+              '<div class="owned" style="width:' + clamp(row.coverage) + '%"></div>' +
+              '<div class="unowned" style="width:' + clamp(100 - row.coverage) + '%"></div>' +
+              '</div>'
+            tr.innerHTML = [
+              '<td class="path"></td>',
+              '<td></td>',
+              '<td></td>',
+              '<td></td>',
+              '<td>' + bar + '</td>'
+            ].join('')
+            const pathButton = document.createElement('button')
+            pathButton.className = 'path path-button'
+            pathButton.type = 'button'
+            pathButton.textContent = relativeLabel(row.path, scope)
+            pathButton.title = 'Drill into ' + row.path
+            if (!hasChildren.has(row.path)) {
+              pathButton.disabled = true
+              pathButton.title = 'Leaf directory'
+            }
+            pathButton.addEventListener('click', () => onScopeChange(row.path))
+            tr.children[0].appendChild(pathButton)
+            tr.children[1].textContent = fmt.format(row.unowned)
+            tr.children[2].textContent = fmt.format(row.total)
+            tr.children[3].textContent = percent(row.coverage)
+            body.appendChild(tr)
+          }
+
+          upButton.disabled = !scope
+          resetButton.disabled = !scope
+          renderBreadcrumbs(scope, breadcrumbs, onScopeChange)
+          count.textContent = 'Scope: ' + (scope || '(root)') + ' — showing ' +
+            fmt.format(Math.min(rows.length, 2500)) + ' of ' + fmt.format(rows.length) + ' directories.'
+        }
+
+        return { render }
+      }
+
+      function setupUnownedFiles (files, getScope) {
+        const filterInput = document.getElementById('file-filter')
+        const list = document.getElementById('unowned-file-list')
+        const count = document.getElementById('file-count')
+
+        filterInput.addEventListener('input', render)
+        render()
+
+        function render () {
+          const scope = getScope()
+          const query = filterInput.value.trim().toLowerCase()
+          const scoped = scope ? files.filter(file => file === scope || file.startsWith(scope + '/')) : files
+          const filtered = query ? scoped.filter(file => file.toLowerCase().includes(query)) : scoped
+          const shown = filtered.slice(0, 6000)
+          list.textContent = shown.join('\n') || '(none)'
+          count.textContent = 'Scope: ' + (scope || '(root)') + ' — showing ' +
+            fmt.format(shown.length) + ' of ' + fmt.format(filtered.length) + ' unowned files.'
+        }
+
+        return { render }
+      }
+
+      function parentPath (value) {
+        if (!value) return ''
+        const index = value.lastIndexOf('/')
+        return index === -1 ? '' : value.slice(0, index)
+      }
+
+      function isDirectChild (childPath, parent) {
+        if (!parent) {
+          return !childPath.includes('/')
+        }
+        if (!childPath.startsWith(parent + '/')) return false
+        const remainder = childPath.slice(parent.length + 1)
+        return remainder.length > 0 && !remainder.includes('/')
+      }
+
+      function relativeLabel (value, scope) {
+        if (!scope) return value
+        return value.slice(scope.length + 1)
+      }
+
+      function renderBreadcrumbs (scope, target, onScopeChange) {
+        target.innerHTML = ''
+
+        const rootButton = document.createElement('button')
+        rootButton.className = 'path-button'
+        rootButton.type = 'button'
+        rootButton.textContent = report.repoName
+        rootButton.addEventListener('click', () => onScopeChange(''))
+        target.appendChild(rootButton)
+
+        if (!scope) return
+
+        const parts = scope.split('/')
+        let built = ''
+        for (const part of parts) {
+          const sep = document.createElement('span')
+          sep.className = 'sep'
+          sep.textContent = '/'
+          target.appendChild(sep)
+
+          built = built ? built + '/' + part : part
+          const partButton = document.createElement('button')
+          partButton.className = 'path-button'
+          partButton.type = 'button'
+          partButton.textContent = part
+          const nextScope = built
+          partButton.addEventListener('click', () => onScopeChange(nextScope))
+          target.appendChild(partButton)
+        }
+      }
+
+      function normalizeScope (scope) {
+        if (!scope || scope === '(root)') return ''
+        const normalized = String(scope).replaceAll(/^\/+|\/+$/g, '')
+        if (!normalized) return ''
+        return knownScopes.has(normalized) ? normalized : ''
+      }
+
+      function readScopeFromLocation () {
+        const params = new URLSearchParams(globalThis.location.search)
+        return normalizeScope(params.get(scopeQueryParam))
+      }
+
+      function syncScopeToLocation (scope, replace) {
+        const nextUrl = new URL(globalThis.location.href)
+        if (scope) {
+          nextUrl.searchParams.set(scopeQueryParam, scope)
+        } else {
+          nextUrl.searchParams.delete(scopeQueryParam)
+        }
+
+        const nextState = { scope }
+        if (replace) {
+          globalThis.history.replaceState(nextState, '', nextUrl)
+        } else {
+          globalThis.history.pushState(nextState, '', nextUrl)
+        }
+      }
+    })()
+  </script>
+</body>
+</html>
+`
+}
