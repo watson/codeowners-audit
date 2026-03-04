@@ -7,6 +7,7 @@ const { execFileSync } = require('node:child_process')
 const { mkdirSync, readFileSync, writeFileSync } = require('node:fs')
 const { tmpdir } = require('node:os')
 const path = require('node:path')
+const { version: packageVersion } = require('./package.json')
 
 const DEFAULT_OUTPUT_FILE_NAME = 'codeowners-gaps-report.html'
 const DEFAULT_OUTPUT_PATH = path.join(tmpdir(), 'codeowners-report', DEFAULT_OUTPUT_FILE_NAME)
@@ -22,6 +23,11 @@ main()
 function main () {
   try {
     const options = parseArgs(process.argv.slice(2))
+
+    if (options.version) {
+      console.log(packageVersion)
+      return
+    }
 
     if (options.help) {
       printUsage()
@@ -92,7 +98,8 @@ function main () {
  *   includeUntracked: boolean,
  *   upload: boolean,
  *   open: boolean,
- *   help: boolean
+ *   help: boolean,
+ *   version: boolean
  * }}
  */
 function parseArgs (args) {
@@ -104,6 +111,7 @@ function parseArgs (args) {
   let upload = false
   let open = true
   let help = false
+  let version = false
 
   for (let index = 0; index < args.length; index++) {
     const arg = args[index]
@@ -153,6 +161,11 @@ function parseArgs (args) {
       continue
     }
 
+    if (arg === '--version' || arg === '-v') {
+      version = true
+      continue
+    }
+
     throw new Error('Unknown argument: ' + arg)
   }
 
@@ -176,6 +189,7 @@ function parseArgs (args) {
     upload,
     open,
     help,
+    version,
   }
 }
 
@@ -195,6 +209,7 @@ function printUsage () {
       '      --upload            Upload to ' + UPLOAD_PROVIDER + ' and print a public URL',
       '      --no-open           Do not open the report in your browser',
       '  -h, --help              Show this help',
+      '  -v, --version           Show version',
     ].join('\n')
   )
 }

@@ -7,6 +7,7 @@ const test = require('node:test')
 
 const projectRoot = path.resolve(__dirname, '..')
 const cliPath = path.join(projectRoot, 'report.js')
+const packageVersion = require(path.join(projectRoot, 'package.json')).version
 const defaultOutputFile = 'codeowners-gaps-report.html'
 
 function parseOutputPathFromStdout (stdout) {
@@ -185,6 +186,23 @@ test('--help prints usage without failing', (t) => {
   assert.match(result.stdout, /--include-untracked/)
   assert.match(result.stdout, /--output-dir/)
   assert.match(result.stdout, /--no-open/)
+  assert.match(result.stdout, /--version/)
+})
+
+test('--version prints package version without failing', (t) => {
+  const tempDir = mkdtempSync(path.join(tmpdir(), 'codeowners-report-version-'))
+  t.after(() => {
+    rmSync(tempDir, { recursive: true, force: true })
+  })
+
+  const result = runCli(['--version'], { cwd: tempDir })
+
+  assert.equal(result.status, 0, result.stderr)
+  assert.equal(result.stdout.trim(), packageVersion)
+
+  const shortResult = runCli(['-v'], { cwd: tempDir })
+  assert.equal(shortResult.status, 0, shortResult.stderr)
+  assert.equal(shortResult.stdout.trim(), packageVersion)
 })
 
 test('opens local report in browser by default', (t) => {

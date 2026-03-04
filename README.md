@@ -61,6 +61,7 @@ By default, the tool:
 | `--upload` | Upload report to ZenBin and print a public URL |
 | `--no-open` | Do not open the report automatically |
 | `-h, --help` | Show help |
+| `-v, --version` | Show version |
 
 ## Examples
 
