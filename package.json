@@ -2,6 +2,7 @@
   "name": "codeowners-audit",
   "version": "1.2.0",
   "description": "Generate an HTML report for CODEOWNERS ownership gaps",
+  "type": "module",
   "bin": {
     "codeowners-audit": "report.js"
   },

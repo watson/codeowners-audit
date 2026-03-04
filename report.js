@@ -1,18 +1,15 @@
 #!/usr/bin/env node
-'use strict'
-
 /* eslint-disable no-console */
 
-const { execFileSync } = require('node:child_process')
-const { mkdirSync, readFileSync, writeFileSync } = require('node:fs')
-const { tmpdir } = require('node:os')
-const path = require('node:path')
-const { version: packageVersion } = require('./package.json')
-const { createProgressLogger } = require('./lib/progress')
-const {
+import { execFileSync } from 'node:child_process'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
+import { createProgressLogger } from './lib/progress.js'
+import {
   collectDirectoryTeamSuggestions,
   normalizeTeamIgnoreToken,
-} = require('./lib/team-suggestions')
+} from './lib/team-suggestions.js'
 
 const DEFAULT_OUTPUT_FILE_NAME = 'codeowners-gaps-report.html'
 const DEFAULT_OUTPUT_PATH = path.join(tmpdir(), 'codeowners-audit', DEFAULT_OUTPUT_FILE_NAME)
@@ -27,7 +24,8 @@ const GITHUB_API_BASE_URL = 'https://api.github.com'
 const FILE_ANALYSIS_PROGRESS_INTERVAL = 20000
 const EXIT_CODE_UNCOVERED = 1
 const EXIT_CODE_RUNTIME_ERROR = 2
-const REPORT_TEMPLATE_PATH = path.join(__dirname, 'report.template.html')
+const packageVersion = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')).version
+const REPORT_TEMPLATE_PATH = new URL('./report.template.html', import.meta.url)
 const REPORT_DATA_PLACEHOLDER = '__REPORT_DATA_JSON__'
 const REPORT_HTML_TEMPLATE = readFileSync(REPORT_TEMPLATE_PATH, 'utf8')
 

@@ -1,14 +1,15 @@
-const assert = require('node:assert/strict')
-const { execFileSync, spawn, spawnSync } = require('node:child_process')
-const { createServer } = require('node:http')
-const { mkdtempSync, mkdirSync, readFileSync, rmSync, unlinkSync, writeFileSync, existsSync, chmodSync } = require('node:fs')
-const { tmpdir } = require('node:os')
-const path = require('node:path')
-const test = require('node:test')
+import assert from 'node:assert/strict'
+import { execFileSync, spawn, spawnSync } from 'node:child_process'
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, unlinkSync, writeFileSync, existsSync, chmodSync } from 'node:fs'
+import { createServer } from 'node:http'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
+import test from 'node:test'
+import { fileURLToPath } from 'node:url'
 
-const projectRoot = path.resolve(__dirname, '..')
+const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const cliPath = path.join(projectRoot, 'report.js')
-const packageVersion = require(path.join(projectRoot, 'package.json')).version
+const packageVersion = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version
 const defaultOutputFile = 'codeowners-gaps-report.html'
 
 function parseOutputPathFromStdout (stdout) {
@@ -219,7 +220,11 @@ test('team suggestions map editors to repo teams for 0% covered directories', as
     res.statusCode = 404
     res.end(JSON.stringify({ message: 'not found' }))
   })
-  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  await /** @type {Promise<void>} */ (
+    new Promise((resolve) => {
+      server.listen(0, '127.0.0.1', resolve)
+    })
+  )
   t.after(() => {
     server.close()
   })
@@ -338,7 +343,11 @@ test('team suggestions support ignored team list', async (t) => {
     res.statusCode = 404
     res.end(JSON.stringify({ message: 'not found' }))
   })
-  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  await /** @type {Promise<void>} */ (
+    new Promise((resolve) => {
+      server.listen(0, '127.0.0.1', resolve)
+    })
+  )
   t.after(() => {
     server.close()
   })
