@@ -139,6 +139,10 @@
       align-items: center;
       margin-bottom: 12px;
     }
+    .field-controls {
+      margin-top: 10px;
+      margin-bottom: 16px;
+    }
     .controls input[type="text"] {
       min-width: 280px;
       flex: 1;
@@ -214,6 +218,10 @@
 
     .muted { color: var(--muted); }
     #directory-count { margin-top: 10px; }
+    #file-count {
+      margin-top: 10px;
+      margin-bottom: 6px;
+    }
     .file-list {
       max-height: 380px;
       overflow: auto;
@@ -264,7 +272,7 @@
       <div class="controls">
         <div class="breadcrumbs" id="dir-breadcrumbs"></div>
       </div>
-      <div class="controls">
+      <div class="controls field-controls">
         <input id="dir-filter" type="text" placeholder="Filter directories (e.g. packages/dd-trace)" />
         <label><input id="dir-only-gaps" type="checkbox" checked /> only show directories with unowned files</label>
       </div>
@@ -289,7 +297,7 @@
         <h2>Unowned Files</h2>
         <p class="muted">Files with no matching owner rule</p>
       </div>
-      <div class="controls">
+      <div class="controls field-controls">
         <input id="file-filter" type="text" placeholder="Filter unowned files..." />
       </div>
       <div class="file-list" id="unowned-file-list"></div>
