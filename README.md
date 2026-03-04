@@ -2,6 +2,12 @@
 
 Generate a polished, interactive HTML report that shows which files in a Git repository are covered by `CODEOWNERS` rules and where ownership gaps exist.
 
+## Live example
+
+See how ownership coverage looks in practice with this interactive report for the `nodejs/node` repository:
+
+- [example.html](https://htmlpreview.github.io/?https://raw.githubusercontent.com/watson/codeowners-report/main/example.html)
+
 ## Why this exists
 
 `CODEOWNERS` is great for review routing, but it is hard to quickly answer:
