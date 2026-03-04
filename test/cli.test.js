@@ -193,6 +193,35 @@ test('--include-untracked adds untracked files to analysis', (t) => {
   assert.ok(withFlagData.unownedFiles.includes('new-untracked-file.txt'))
 })
 
+test('--check exits non-zero when unowned files exist and skips report generation', (t) => {
+  const repoDir = createRepo(t, {
+    trackedFiles: {
+      'src/also-unowned.js': 'module.exports = 3\n',
+    },
+  })
+
+  const result = runCli(['--check'], { cwd: repoDir })
+
+  assert.equal(result.status, 1)
+  assert.doesNotMatch(result.stdout, /Wrote CODEOWNERS gap report/)
+  assert.match(result.stderr, /CODEOWNERS check failed/)
+  assert.match(result.stderr, /src\/also-unowned\.js/)
+  assert.match(result.stderr, /src\/unowned\.js/)
+})
+
+test('--check glob filters files before ownership validation', (t) => {
+  const repoDir = createRepo(t)
+
+  const passingResult = runCli(['--check', 'src/owned.js'], { cwd: repoDir })
+  assert.equal(passingResult.status, 0, passingResult.stderr)
+  assert.match(passingResult.stdout, /CODEOWNERS check passed/)
+  assert.doesNotMatch(passingResult.stdout, /Wrote CODEOWNERS gap report/)
+
+  const failingResult = runCli(['--check=src/*.js'], { cwd: repoDir })
+  assert.equal(failingResult.status, 1)
+  assert.match(failingResult.stderr, /src\/unowned\.js/)
+})
+
 test('top-level .github/CODEOWNERS applies rules repository-wide', (t) => {
   const repoDir = createRepo(t, {
     codeowners: '/does-not-match-anything @fallback\n',
@@ -249,6 +278,7 @@ test('--help prints usage without failing', (t) => {
   assert.match(result.stdout, /--output-dir/)
   assert.match(result.stdout, /--working-dir/)
   assert.match(result.stdout, /--no-open/)
+  assert.match(result.stdout, /--check/)
   assert.match(result.stdout, /--version/)
 })
 
@@ -451,4 +481,8 @@ test('unknown and invalid options fail with a useful error', (t) => {
   const missingWorkingDirResult = runCli(['--working-dir'], { cwd: repoDir })
   assert.equal(missingWorkingDirResult.status, 1)
   assert.match(missingWorkingDirResult.stderr, /Missing value for --working-dir/)
+
+  const missingCheckGlobResult = runCli(['--check='], { cwd: repoDir })
+  assert.equal(missingCheckGlobResult.status, 1)
+  assert.match(missingCheckGlobResult.stderr, /Missing value for --check/)
 })

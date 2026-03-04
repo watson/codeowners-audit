@@ -50,6 +50,11 @@ function main () {
       .map(codeownersPath => loadCodeownersDescriptor(repoRoot, codeownersPath))
       .sort(compareCodeownersDescriptor)
 
+    if (options.checkOnly) {
+      runOwnershipCheck(repoRoot, allRepoFiles, codeownersDescriptors, options)
+      return
+    }
+
     const outputAbsolutePath = path.resolve(repoRoot, options.outputPath)
     const outputRelativePath = toPosixPath(path.relative(repoRoot, outputAbsolutePath))
     const filesToAnalyze = allRepoFiles.filter(filePath => filePath !== outputRelativePath)
@@ -99,6 +104,8 @@ function main () {
  *   outputPath: string,
  *   workingDir: string|null,
  *   includeUntracked: boolean,
+ *   checkOnly: boolean,
+ *   checkGlob: string,
  *   upload: boolean,
  *   open: boolean,
  *   help: boolean,
@@ -113,6 +120,8 @@ function parseArgs (args) {
   let workingDir = null
   let workingDirSetExplicitly = false
   let includeUntracked = false
+  let checkOnly = false
+  let checkGlob = '**'
   let upload = false
   let open = true
   let help = false
@@ -176,6 +185,21 @@ function parseArgs (args) {
       continue
     }
 
+    if (arg === '--check') {
+      checkOnly = true
+      if (args[index + 1] && !args[index + 1].startsWith('-')) {
+        checkGlob = args[index + 1]
+        index++
+      }
+      continue
+    }
+
+    if (arg.startsWith('--check=')) {
+      checkOnly = true
+      checkGlob = arg.slice('--check='.length)
+      continue
+    }
+
     if (arg === '--upload') {
       upload = true
       continue
@@ -217,10 +241,16 @@ function parseArgs (args) {
     throw new Error('Missing value for --working-dir.')
   }
 
+  if (!help && checkOnly && !checkGlob) {
+    throw new Error('Missing value for --check.')
+  }
+
   return {
     outputPath,
     workingDir,
     includeUntracked,
+    checkOnly,
+    checkGlob,
     upload,
     open,
     help,
@@ -242,6 +272,7 @@ function printUsage () {
       '      --output-dir <dir>  Output directory for the generated HTML report',
       '  -C, --working-dir <dir> Run git commands from this directory (alias: --cwd)',
       '      --include-untracked Include untracked files in the analysis',
+      '      --check[=<glob>]    CLI-only ownership check (default glob: **)',
       '      --upload            Upload to ' + UPLOAD_PROVIDER + ' and print a public URL',
       '      --no-open           Do not open the report in your browser',
       '  -h, --help              Show this help',
@@ -277,6 +308,52 @@ function openReportInBrowser (target) {
 }
 
 /**
+ * Run CLI-only CODEOWNERS ownership check and set process exit code on failure.
+ * @param {string} repoRoot
+ * @param {string[]} files
+ * @param {{
+ *   path: string,
+ *   dir: string,
+ *   rules: {
+ *     pattern: string,
+ *     owners: string[],
+ *     matches: (scopePath: string, repoPath: string) => boolean
+ *   }[]
+ * }[]} codeownersDescriptors
+ * @param {{
+ *   includeUntracked: boolean,
+ *   checkGlob: string
+ * }} options
+ * @returns {void}
+ */
+function runOwnershipCheck (repoRoot, files, codeownersDescriptors, options) {
+  const checkGlobMatcher = createCliGlobMatcher(options.checkGlob)
+  const filesToAnalyze = files.filter(filePath => checkGlobMatcher(filePath))
+  const report = buildReport(repoRoot, filesToAnalyze, codeownersDescriptors, options)
+
+  if (report.unownedFiles.length > 0) {
+    console.error(
+      'CODEOWNERS check failed for glob %s (%d analyzed files, %d unowned):',
+      JSON.stringify(options.checkGlob),
+      report.totals.files,
+      report.totals.unowned
+    )
+    for (const filePath of report.unownedFiles) {
+      console.error('  - %s', filePath)
+    }
+    process.exitCode = 1
+    return
+  }
+
+  console.log(
+    'CODEOWNERS check passed for glob %s (%d analyzed files, %d unowned).',
+    JSON.stringify(options.checkGlob),
+    report.totals.files,
+    report.totals.unowned
+  )
+}
+
+/**
  * Get a readable message from a child-process error.
  * @param {unknown} error
  * @returns {string}
@@ -292,6 +369,16 @@ function formatCommandError (error) {
   }
 
   return String(error)
+}
+
+/**
+ * Build a file matcher for CLI check globs.
+ * @param {string} pattern
+ * @returns {(filePath: string) => boolean}
+ */
+function createCliGlobMatcher (pattern) {
+  const matches = createPatternMatcher(pattern)
+  return (filePath) => matches(filePath, filePath)
 }
 
 /**

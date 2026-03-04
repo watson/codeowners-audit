@@ -57,6 +57,8 @@ By default, the tool:
 - writes the report to a temporary path
 - opens the report in your default browser
 
+For CI checks where you do not want an HTML report, use `--check`.
+
 ### Options
 
 | Option | Description |
@@ -65,6 +67,7 @@ By default, the tool:
 | `--output-dir <dir>` | Output directory for the generated report |
 | `-C, --working-dir <dir>` | Resolve git operations from this directory (alias: `--cwd`) |
 | `--include-untracked` | Include untracked (non-ignored) files in analysis |
+| `--check[=<glob>]` | CLI-only check mode. No report is generated; exits non-zero if uncovered files match the glob (default: all files via `**`) |
 | `--upload` | Upload report to ZenBin and print a public URL (small reports only) |
 | `--no-open` | Do not open the report automatically |
 | `-h, --help` | Show help |
@@ -94,6 +97,38 @@ Run against a repository from another directory:
 
 ```bash
 codeowners-audit --working-dir ~/code/my-repo
+```
+
+## Using in CI
+
+Use `--check` to turn `codeowners-audit` into a CI gate.
+In this mode no HTML report is generated; the command only validates ownership coverage.
+
+### What happens in `--check` mode
+
+- Exit code `0`: all matched files are covered by `CODEOWNERS`.
+- Exit code `1`: one or more matched files are uncovered (the uncovered file paths are printed to stderr).
+- Exit code `1`: runtime/setup error (for example: not in a Git repository, missing `CODEOWNERS`, invalid arguments).
+
+### Common CI commands
+
+Validate all tracked files:
+
+```bash
+codeowners-audit --check
+```
+
+Validate only a subset (for example spec files):
+
+```bash
+codeowners-audit --check "**/*.spec.js"
+```
+
+### GitHub Actions example
+
+```yaml
+- name: Verify CODEOWNERS coverage
+  run: npx codeowners-audit --check
 ```
 
 ## How matching works
