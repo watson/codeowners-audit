@@ -265,7 +265,7 @@ test('team suggestions map editors to repo teams for 0% covered directories', as
 
   const result = await runCliAsync(
     [
-      '--team-suggestions',
+      '--suggest-teams',
       '--github-org', 'test-org',
       '--github-token', 'test-token',
       '--github-api-base-url', apiBaseUrl,
@@ -308,7 +308,7 @@ test('team suggestions return no-auth status when token is missing', (t) => {
 
   const result = runCli(
     [
-      '--team-suggestions',
+      '--suggest-teams',
       '--github-org', 'test-org',
       '--output', 'no-auth-suggestions.html',
     ],
@@ -396,7 +396,7 @@ test('team suggestions fall back to GITHUB_TOKEN env when --github-token is omit
 
   const result = await runCliAsync(
     [
-      '--team-suggestions',
+      '--suggest-teams',
       '--github-org', 'test-org',
       '--github-api-base-url', apiBaseUrl,
       '--output', 'team-suggestions-env-fallback.html',
@@ -478,11 +478,11 @@ test('team suggestions support ignored team list', async (t) => {
 
   const result = await runCliAsync(
     [
-      '--team-suggestions',
+      '--suggest-teams',
       '--github-org', 'test-org',
       '--github-token', 'test-token',
       '--github-api-base-url', apiBaseUrl,
-      '--team-suggestions-ignore-teams', 'alpha-team',
+      '--suggest-ignore-teams', 'alpha-team',
       '--output', 'ignore-team-suggestions.html',
     ],
     {
@@ -587,7 +587,7 @@ test('--include-untracked adds untracked files to analysis', (t) => {
 
 test('progress output is suppressed by default', (t) => {
   const repoDir = createRepo(t)
-  const result = runCli(['--team-suggestions', '--output', 'default-no-progress.html'], { cwd: repoDir })
+  const result = runCli(['--suggest-teams', '--output', 'default-no-progress.html'], { cwd: repoDir })
 
   assert.equal(result.status, 0, result.stderr)
   assert.doesNotMatch(result.stdout, /\[progress \+/)
@@ -596,7 +596,7 @@ test('progress output is suppressed by default', (t) => {
 
 test('--verbose enables verbose progress output', (t) => {
   const repoDir = createRepo(t)
-  const result = runCli(['--verbose', '--team-suggestions', '--output', 'verbose-progress.html'], { cwd: repoDir })
+  const result = runCli(['--verbose', '--suggest-teams', '--output', 'verbose-progress.html'], { cwd: repoDir })
 
   assert.equal(result.status, 0, result.stderr)
   assert.match(result.stdout, /\[progress \+/)
@@ -862,14 +862,14 @@ test('--help prints usage without failing', (t) => {
   assert.match(result.stdout, /--fail-on-unowned/)
   assert.match(result.stdout, /--glob/)
   assert.match(result.stdout, /-g, --glob <pattern>/)
-  assert.match(result.stdout, /--team-suggestions/)
-  assert.match(result.stdout, /--team-suggestions-ignore-teams/)
+  assert.match(result.stdout, /--suggest-teams/)
+  assert.match(result.stdout, /--suggest-ignore-teams/)
   assert.match(result.stdout, /--github-token/)
   assert.match(result.stdout, /--verbose/)
   assert.match(result.stdout, /--version/)
   assert.match(result.stdout, /  -o, --output <path> {6}Output HTML file path/)
-  assert.match(result.stdout, /--team-suggestions-window-days <days>\n {27}Git history lookback window for suggestions/)
-  assert.match(result.stdout, /--team-suggestions-ignore-teams <list>\n {27}Comma-separated team slugs/)
+  assert.match(result.stdout, /--suggest-window-days <days>\n {27}Git history lookback window for suggestions/)
+  assert.match(result.stdout, /--suggest-ignore-teams <list>\n {27}Comma-separated team slugs/)
 })
 
 test('--version prints package version without failing', (t) => {
@@ -1116,15 +1116,15 @@ test('unknown and invalid options fail with a useful error', (t) => {
   assert.equal(missingShortGlobResult.status, 2)
   assert.match(missingShortGlobResult.stderr, /Missing value for --glob/)
 
-  const missingSuggestionsWindowResult = runCli(['--team-suggestions-window-days'], { cwd: repoDir })
+  const missingSuggestionsWindowResult = runCli(['--suggest-window-days'], { cwd: repoDir })
   assert.equal(missingSuggestionsWindowResult.status, 2)
-  assert.match(missingSuggestionsWindowResult.stderr, /Missing value for --team-suggestions-window-days/)
+  assert.match(missingSuggestionsWindowResult.stderr, /Missing value for --suggest-window-days/)
 
-  const invalidSuggestionsTopResult = runCli(['--team-suggestions-top=0'], { cwd: repoDir })
+  const invalidSuggestionsTopResult = runCli(['--suggest-top=0'], { cwd: repoDir })
   assert.equal(invalidSuggestionsTopResult.status, 2)
-  assert.match(invalidSuggestionsTopResult.stderr, /--team-suggestions-top must be >= 1/)
+  assert.match(invalidSuggestionsTopResult.stderr, /--suggest-top must be >= 1/)
 
-  const missingIgnoreTeamsResult = runCli(['--team-suggestions-ignore-teams'], { cwd: repoDir })
+  const missingIgnoreTeamsResult = runCli(['--suggest-ignore-teams'], { cwd: repoDir })
   assert.equal(missingIgnoreTeamsResult.status, 2)
-  assert.match(missingIgnoreTeamsResult.stderr, /Missing value for --team-suggestions-ignore-teams/)
+  assert.match(missingIgnoreTeamsResult.stderr, /Missing value for --suggest-ignore-teams/)
 })

@@ -78,10 +78,10 @@ In interactive mode, `--no-report` implies `--list-unowned` so output still stay
 | `--list-unowned` | Print unowned file paths to stdout |
 | `--fail-on-unowned` | Exit non-zero when one or more files are unowned |
 | `-g, --glob <pattern>` | Repeatable file filter for report/check scope (default: `**`) |
-| `--team-suggestions` | Suggest `@org/team` for uncovered directories |
-| `--team-suggestions-window-days <days>` | Git history lookback window for suggestions (default: `365`) |
-| `--team-suggestions-top <n>` | Top team suggestions to keep per directory (default: `3`) |
-| `--team-suggestions-ignore-teams <list>` | Comma-separated team slugs or `@org/slug` entries to exclude from suggestions |
+| `--suggest-teams` | Suggest `@org/team` for uncovered directories |
+| `--suggest-window-days <days>` | Git history lookback window for suggestions (default: `365`) |
+| `--suggest-top <n>` | Top team suggestions to keep per directory (default: `3`) |
+| `--suggest-ignore-teams <list>` | Comma-separated team slugs or `@org/slug` entries to exclude from suggestions |
 | `--github-org <org>` | Override GitHub org for team lookups |
 | `--github-token <token>` | GitHub token for team lookups (falls back to `GITHUB_TOKEN`, then `GH_TOKEN`) |
 | `--github-api-base-url <url>` | GitHub API base URL (default: `https://api.github.com`) |

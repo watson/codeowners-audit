@@ -255,49 +255,49 @@ function parseArgs (args) {
       continue
     }
 
-    if (arg === '--team-suggestions') {
+    if (arg === '--suggest-teams') {
       teamSuggestions = true
       continue
     }
 
-    if (arg === '--team-suggestions-window-days') {
-      teamSuggestionsWindowDays = parseNumberOption(args[index + 1], '--team-suggestions-window-days')
+    if (arg === '--suggest-window-days') {
+      teamSuggestionsWindowDays = parseNumberOption(args[index + 1], '--suggest-window-days')
       index++
       continue
     }
 
-    if (arg.startsWith('--team-suggestions-window-days=')) {
+    if (arg.startsWith('--suggest-window-days=')) {
       teamSuggestionsWindowDays = parseNumberOption(
-        arg.slice('--team-suggestions-window-days='.length),
-        '--team-suggestions-window-days'
+        arg.slice('--suggest-window-days='.length),
+        '--suggest-window-days'
       )
       continue
     }
 
-    if (arg === '--team-suggestions-top') {
-      teamSuggestionsTop = parseNumberOption(args[index + 1], '--team-suggestions-top')
+    if (arg === '--suggest-top') {
+      teamSuggestionsTop = parseNumberOption(args[index + 1], '--suggest-top')
       index++
       continue
     }
 
-    if (arg.startsWith('--team-suggestions-top=')) {
-      teamSuggestionsTop = parseNumberOption(arg.slice('--team-suggestions-top='.length), '--team-suggestions-top')
+    if (arg.startsWith('--suggest-top=')) {
+      teamSuggestionsTop = parseNumberOption(arg.slice('--suggest-top='.length), '--suggest-top')
       continue
     }
 
-    if (arg === '--team-suggestions-ignore-teams') {
+    if (arg === '--suggest-ignore-teams') {
       teamSuggestionsIgnoreTeams = teamSuggestionsIgnoreTeams.concat(
-        parseCsvListOption(args[index + 1], '--team-suggestions-ignore-teams')
+        parseCsvListOption(args[index + 1], '--suggest-ignore-teams')
       )
       index++
       continue
     }
 
-    if (arg.startsWith('--team-suggestions-ignore-teams=')) {
+    if (arg.startsWith('--suggest-ignore-teams=')) {
       teamSuggestionsIgnoreTeams = teamSuggestionsIgnoreTeams.concat(
         parseCsvListOption(
-          arg.slice('--team-suggestions-ignore-teams='.length),
-          '--team-suggestions-ignore-teams'
+          arg.slice('--suggest-ignore-teams='.length),
+          '--suggest-ignore-teams'
         )
       )
       continue
@@ -411,11 +411,11 @@ function parseArgs (args) {
   }
 
   if (!help && teamSuggestionsWindowDays < 1) {
-    throw new Error('--team-suggestions-window-days must be >= 1.')
+    throw new Error('--suggest-window-days must be >= 1.')
   }
 
   if (!help && teamSuggestionsTop < 1) {
-    throw new Error('--team-suggestions-top must be >= 1.')
+    throw new Error('--suggest-top must be >= 1.')
   }
 
   if (!help && githubOrg !== null && !githubOrg) {
@@ -536,10 +536,10 @@ function printUsage () {
     ['--list-unowned', 'Print unowned file paths to stdout'],
     ['--fail-on-unowned', 'Exit non-zero when one or more files are unowned'],
     ['-g, --glob <pattern>', 'Repeatable file filter for report/check scope (default: **)'],
-    ['--team-suggestions', 'Suggest @org/team for uncovered directories'],
-    ['--team-suggestions-window-days <days>', 'Git history lookback window for suggestions (default: ' + TEAM_SUGGESTIONS_DEFAULT_WINDOW_DAYS + ')'],
-    ['--team-suggestions-top <n>', 'Top team suggestions to keep per directory (default: ' + TEAM_SUGGESTIONS_DEFAULT_TOP + ')'],
-    ['--team-suggestions-ignore-teams <list>', 'Comma-separated team slugs or @org/slug entries to exclude from suggestions'],
+    ['--suggest-teams', 'Suggest @org/team for uncovered directories'],
+    ['--suggest-window-days <days>', 'Git history lookback window for suggestions (default: ' + TEAM_SUGGESTIONS_DEFAULT_WINDOW_DAYS + ')'],
+    ['--suggest-top <n>', 'Top team suggestions to keep per directory (default: ' + TEAM_SUGGESTIONS_DEFAULT_TOP + ')'],
+    ['--suggest-ignore-teams <list>', 'Comma-separated team slugs or @org/slug entries to exclude from suggestions'],
     ['--github-org <org>', 'Override GitHub org for team lookups'],
     ['--github-token <token>', 'GitHub token for team lookups (falls back to GITHUB_TOKEN, then GH_TOKEN)'],
     ['--github-api-base-url <url>', 'GitHub API base URL (default: ' + GITHUB_API_BASE_URL + ')'],
