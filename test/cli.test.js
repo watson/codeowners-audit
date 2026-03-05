@@ -606,6 +606,9 @@ test('--help prints usage without failing', (t) => {
   assert.match(result.stdout, /--team-suggestions-ignore-teams/)
   assert.match(result.stdout, /--github-token-env/)
   assert.match(result.stdout, /--version/)
+  assert.match(result.stdout, /  -o, --output <path> {6}Output HTML file path/)
+  assert.match(result.stdout, /--team-suggestions-window-days <days>\n {27}Git history lookback window for suggestions/)
+  assert.match(result.stdout, /--team-suggestions-ignore-teams <list>\n {27}Comma-separated team slugs/)
 })
 
 test('--version prints package version without failing', (t) => {

@@ -432,29 +432,59 @@ function parseArgs (args) {
  * @returns {void}
  */
 function printUsage () {
+  const optionRows = [
+    ['-o, --output <path>', 'Output HTML file path (default: ' + DEFAULT_OUTPUT_PATH + ')'],
+    ['--output-dir <dir>', 'Output directory for the generated HTML report'],
+    ['-C, --working-dir <dir>', 'Run git commands from this directory (alias: --cwd)'],
+    ['--include-untracked', 'Include untracked files in the analysis'],
+    ['--check[=<glob>]', 'CLI-only ownership check (default glob: **)'],
+    ['--team-suggestions', 'Suggest @org/team for uncovered directories'],
+    ['--team-suggestions-window-days <days>', 'Git history lookback window for suggestions (default: ' + TEAM_SUGGESTIONS_DEFAULT_WINDOW_DAYS + ')'],
+    ['--team-suggestions-top <n>', 'Top team suggestions to keep per directory (default: ' + TEAM_SUGGESTIONS_DEFAULT_TOP + ')'],
+    ['--team-suggestions-ignore-teams <list>', 'Comma-separated team slugs or @org/slug entries to exclude from suggestions'],
+    ['--github-org <org>', 'Override GitHub org for team lookups'],
+    ['--github-token-env <name>', 'Env var containing GitHub token (default: ' + TEAM_SUGGESTIONS_TOKEN_ENV_DEFAULT + '; falls back to GH_TOKEN)'],
+    ['--github-api-base-url <url>', 'GitHub API base URL (default: ' + GITHUB_API_BASE_URL + ')'],
+    ['--upload', 'Upload to ' + UPLOAD_PROVIDER + ' and print a public URL'],
+    ['--no-open', 'Do not open the report in your browser'],
+    ['-h, --help', 'Show this help'],
+    ['-v, --version', 'Show version'],
+  ]
+
   console.log(
     [
       'Usage: codeowners-audit [options]',
       '',
       'Options:',
-      '  -o, --output <path>     Output HTML file path (default: ' + DEFAULT_OUTPUT_PATH + ')',
-      '      --output-dir <dir>  Output directory for the generated HTML report',
-      '  -C, --working-dir <dir> Run git commands from this directory (alias: --cwd)',
-      '      --include-untracked Include untracked files in the analysis',
-      '      --check[=<glob>]    CLI-only ownership check (default glob: **)',
-      '      --team-suggestions  Suggest @org/team for uncovered directories',
-      '      --team-suggestions-window-days <days>  Git history lookback window for suggestions (default: ' + TEAM_SUGGESTIONS_DEFAULT_WINDOW_DAYS + ')',
-      '      --team-suggestions-top <n>  Top team suggestions to keep per directory (default: ' + TEAM_SUGGESTIONS_DEFAULT_TOP + ')',
-      '      --team-suggestions-ignore-teams <list>  Comma-separated team slugs or @org/slug entries to exclude from suggestions',
-      '      --github-org <org>  Override GitHub org for team lookups',
-      '      --github-token-env <name>  Env var containing GitHub token (default: ' + TEAM_SUGGESTIONS_TOKEN_ENV_DEFAULT + '; falls back to GH_TOKEN)',
-      '      --github-api-base-url <url>  GitHub API base URL (default: ' + GITHUB_API_BASE_URL + ')',
-      '      --upload            Upload to ' + UPLOAD_PROVIDER + ' and print a public URL',
-      '      --no-open           Do not open the report in your browser',
-      '  -h, --help              Show this help',
-      '  -v, --version           Show version',
+      ...formatUsageOptions(optionRows),
     ].join('\n')
   )
+}
+
+/**
+ * Render CLI options into aligned help text rows.
+ * @param {Array<[string, string]>} optionRows
+ * @returns {string[]}
+ */
+function formatUsageOptions (optionRows) {
+  const leftPadding = '  '
+  const descriptionColumn = 28
+  const descriptionPaddingWidth = descriptionColumn - 1
+  const lines = []
+
+  for (const [option, description] of optionRows) {
+    const optionLine = leftPadding + option
+
+    if (optionLine.length >= descriptionPaddingWidth) {
+      lines.push(optionLine)
+      lines.push(' '.repeat(descriptionPaddingWidth) + description)
+      continue
+    }
+
+    lines.push(optionLine + ' '.repeat(descriptionPaddingWidth - optionLine.length) + description)
+  }
+
+  return lines
 }
 
 /**
