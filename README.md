@@ -1,12 +1,14 @@
-# codeowners-audit
+<p align="center">
+  <img width="328" height="300" alt="codeowners-audit logo" src="https://github.com/user-attachments/assets/ae21c52c-e923-4c43-8a13-8d22e03bc867" />
+</p>
 
-Generate a polished, interactive HTML report that shows which files in a Git repository are covered by `CODEOWNERS` rules and where ownership gaps exist. You can also run it in CI or from the command line to fail when files are not covered by CODEOWNERS.
-
-## Live example
-
-See how ownership coverage looks in practice with [this interactive report](https://htmlpreview.github.io/?https://raw.githubusercontent.com/watson/codeowners-audit/main/example.html) for the `nodejs/node` repository.
+<p align="center">Generate a polished, interactive HTML report that shows which files in a Git repository are covered by CODEOWNERS rules and where ownership gaps exist. You can also run it in CI or from the command line to fail when files are not covered by CODEOWNERS.</p>
 
 <img width="1429" height="681" alt="image" src="https://github.com/user-attachments/assets/abcaddf1-4159-4278-b592-ce96a1235f8e" />
+
+## Playground
+
+See how ownership coverage looks in practice with [this interactive report](https://htmlpreview.github.io/?https://raw.githubusercontent.com/watson/codeowners-audit/main/example.html) for the `nodejs/node` repository.
 
 ## Why this exists
 
