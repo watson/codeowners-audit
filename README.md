@@ -1,6 +1,6 @@
 # codeowners-audit
 
-Generate a polished, interactive HTML report that shows which files in a Git repository are covered by `CODEOWNERS` rules and where ownership gaps exist.
+Generate a polished, interactive HTML report that shows which files in a Git repository are covered by `CODEOWNERS` rules and where ownership gaps exist. You can also run it in CI or from the command line to fail when files are not covered by CODEOWNERS.
 
 ## Live example
 

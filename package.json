@@ -1,7 +1,7 @@
 {
   "name": "codeowners-audit",
   "version": "1.3.2",
-  "description": "Generate an HTML report for CODEOWNERS ownership gaps",
+  "description": "Generate an HTML report for CODEOWNERS ownership gaps and run in CI or from the CLI to fail when files are not covered.",
   "type": "module",
   "bin": {
     "codeowners-audit": "report.js"
@@ -17,7 +17,11 @@
     "codeowners",
     "github",
     "report",
-    "cli"
+    "cli",
+    "ci",
+    "check",
+    "validation",
+    "coverage"
   ],
   "author": "Thomas Watson <w@tson.dk> (https://wa.tson.dk/)",
   "license": "MIT",
