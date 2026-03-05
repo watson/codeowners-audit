@@ -64,15 +64,22 @@ For CI checks where you do not want an HTML report, use `--ci`.
 | Option | Description |
 | --- | --- |
 | `-o, --output <path>` | Output HTML file path |
-| `--output-dir <dir>` | Output directory for the generated report |
-| `--cwd <dir>` | Resolve git operations from this directory |
-| `--include-untracked` | Include untracked (non-ignored) files in analysis |
-| `--ci` | CI check mode. No report is generated; exits non-zero if uncovered files are found |
-| `-g, --glob <pattern>` | Repeatable file filter for report/check scope. Defaults to all files via `**` when omitted |
-| `--upload` | Upload report to ZenBin and print a public URL (small reports only) |
-| `--no-open` | Do not open the report automatically |
+| `--output-dir <dir>` | Output directory for the generated HTML report |
+| `--cwd <dir>` | Run git commands from this directory |
+| `--include-untracked` | Include untracked files in the analysis |
+| `--ci` | CI ownership check mode (no report; exits non-zero on uncovered files) |
+| `-g, --glob <pattern>` | Repeatable file filter for report/check scope (default: `**`) |
+| `--team-suggestions` | Suggest `@org/team` for uncovered directories |
+| `--team-suggestions-window-days <days>` | Git history lookback window for suggestions (default: `365`) |
+| `--team-suggestions-top <n>` | Top team suggestions to keep per directory (default: `3`) |
+| `--team-suggestions-ignore-teams <list>` | Comma-separated team slugs or `@org/slug` entries to exclude from suggestions |
+| `--github-org <org>` | Override GitHub org for team lookups |
+| `--github-token <token>` | GitHub token for team lookups (falls back to `GITHUB_TOKEN`, then `GH_TOKEN`) |
+| `--github-api-base-url <url>` | GitHub API base URL (default: `https://api.github.com`) |
+| `--upload` | Upload to zenbin and print a public URL |
+| `--no-open` | Do not open the report in your browser |
 | `--verbose` | Enable verbose progress output |
-| `-h, --help` | Show help |
+| `-h, --help` | Show this help |
 | `-v, --version` | Show version |
 
 ## Examples
