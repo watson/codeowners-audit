@@ -428,7 +428,7 @@ function parseArgs (args) {
 function printUsage () {
   /** @type {Array<[string, string]>} */
   const optionRows = [
-    ['-o, --output <path>', 'Output HTML file path (default: ' + DEFAULT_OUTPUT_PATH + ')'],
+    ['-o, --output <path>', 'Output HTML file path'],
     ['--output-dir <dir>', 'Output directory for the generated HTML report'],
     ['--cwd <dir>', 'Run git commands from this directory'],
     ['--include-untracked', 'Include untracked files in the analysis'],
