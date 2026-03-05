@@ -38,6 +38,7 @@ main()
 async function main () {
   try {
     const options = parseArgs(process.argv.slice(2))
+    const interactiveStdin = isInteractiveStdin()
 
     if (options.version) {
       console.log(packageVersion)
@@ -49,17 +50,18 @@ async function main () {
       return
     }
 
-    if (!isInteractiveStdin() && !options.checkOnlyExplicitlyRequested) {
-      if (options.nonInteractiveIncompatibleFlags.length > 0) {
-        throw new Error(
-          'Standard input is non-interactive, so this command defaults to --ci mode. Remove these report-only options: '
-          + options.nonInteractiveIncompatibleFlags.join(', ')
-        )
-      }
-
-      options.checkOnly = true
+    if (!interactiveStdin) {
       options.open = false
-      console.log('Standard input is non-interactive; defaulting to --ci mode.')
+      options.listUnowned = true
+      options.failOnUnowned = true
+      console.log('Standard input is non-interactive; defaulting to --no-open --list-unowned --fail-on-unowned.')
+    }
+    if (options.noReport && options.upload) {
+      throw new Error('--no-report cannot be combined with --upload because no HTML report is generated.')
+    }
+    if (options.noReport) {
+      options.open = false
+      options.listUnowned = true
     }
 
     const commandWorkingDir = options.workingDir ? path.resolve(options.workingDir) : process.cwd()
@@ -78,11 +80,6 @@ async function main () {
 
     const scopeFilteredFiles = filterFilesByCliGlobs(allRepoFiles, options.checkGlobs)
 
-    if (options.checkOnly) {
-      runOwnershipCheck(repoRoot, scopeFilteredFiles, codeownersDescriptors, options)
-      return
-    }
-
     const outputAbsolutePath = path.resolve(repoRoot, options.outputPath)
     const outputRelativePath = toPosixPath(path.relative(repoRoot, outputAbsolutePath))
     const filesToAnalyze = scopeFilteredFiles.filter(filePath => filePath !== outputRelativePath)
@@ -97,7 +94,7 @@ async function main () {
       report.totals.owned,
       report.totals.unowned
     )
-    if (options.teamSuggestions) {
+    if (options.teamSuggestions && !options.noReport) {
       progress('Starting team suggestions for uncovered 0%-coverage directories...')
       const suggestionData = await collectDirectoryTeamSuggestions(repoRoot, report, options, {
         progress,
@@ -112,37 +109,43 @@ async function main () {
         suggestionData.suggestions.length
       )
     }
-    const html = renderHtml(report)
+    if (!options.noReport) {
+      const html = renderHtml(report)
 
-    mkdirSync(path.dirname(outputAbsolutePath), { recursive: true })
-    writeFileSync(outputAbsolutePath, html, 'utf8')
+      mkdirSync(path.dirname(outputAbsolutePath), { recursive: true })
+      writeFileSync(outputAbsolutePath, html, 'utf8')
 
-    console.log(
-      'Wrote CODEOWNERS gap report to %s (%d analyzed files, %d unowned).',
-      outputAbsolutePath,
-      report.totals.files,
-      report.totals.unowned
-    )
-
-    /** @type {string} */
-    let reportLocation = outputAbsolutePath
-    if (options.upload) {
-      const uploadUrl = uploadReport(outputAbsolutePath)
-      reportLocation = uploadUrl
-      console.log('Uploaded report (%s): %s', UPLOAD_PROVIDER, uploadUrl)
+      console.log(
+        'Wrote CODEOWNERS gap report to %s (%d analyzed files, %d unowned).',
+        outputAbsolutePath,
+        report.totals.files,
+        report.totals.unowned
+      )
     }
 
-    if (options.open) {
-      const shouldOpen = await promptForReportOpen(reportLocation)
-      if (shouldOpen) {
-        try {
-          openReportInBrowser(reportLocation)
-          console.log('Opened report in browser: %s', reportLocation)
-        } catch (error) {
-          console.warn(
-            'Could not open report in browser (%s). Re-run with --no-open to disable the open prompt.',
-            formatCommandError(error)
-          )
+    outputUnownedReportResults(report, options)
+
+    if (!options.noReport) {
+      /** @type {string} */
+      let reportLocation = outputAbsolutePath
+      if (options.upload) {
+        const uploadUrl = uploadReport(outputAbsolutePath)
+        reportLocation = uploadUrl
+        console.log('Uploaded report (%s): %s', UPLOAD_PROVIDER, uploadUrl)
+      }
+
+      if (options.open) {
+        const shouldOpen = await promptForReportOpen(reportLocation)
+        if (shouldOpen) {
+          try {
+            openReportInBrowser(reportLocation)
+            console.log('Opened report in browser: %s', reportLocation)
+          } catch (error) {
+            console.warn(
+              'Could not open report in browser (%s). Re-run with --no-open to disable the open prompt.',
+              formatCommandError(error)
+            )
+          }
         }
       }
     }
@@ -160,9 +163,9 @@ async function main () {
  *   outputPath: string,
  *   workingDir: string|null,
  *   includeUntracked: boolean,
- *   checkOnly: boolean,
- *   checkOnlyExplicitlyRequested: boolean,
- *   nonInteractiveIncompatibleFlags: string[],
+ *   noReport: boolean,
+ *   listUnowned: boolean,
+ *   failOnUnowned: boolean,
  *   checkGlobs: string[],
  *   teamSuggestions: boolean,
  *   teamSuggestionsWindowDays: number,
@@ -186,8 +189,9 @@ function parseArgs (args) {
   let workingDir = null
   let workingDirSetExplicitly = false
   let includeUntracked = false
-  let checkOnly = false
-  let checkOnlyExplicitlyRequested = false
+  let noReport = false
+  let listUnowned = false
+  let failOnUnowned = false
   /** @type {string[]} */
   let checkGlobs = []
   let teamSuggestions = false
@@ -334,9 +338,18 @@ function parseArgs (args) {
       continue
     }
 
-    if (arg === '--ci') {
-      checkOnly = true
-      checkOnlyExplicitlyRequested = true
+    if (arg === '--no-report') {
+      noReport = true
+      continue
+    }
+
+    if (arg === '--list-unowned') {
+      listUnowned = true
+      continue
+    }
+
+    if (arg === '--fail-on-unowned') {
+      failOnUnowned = true
       continue
     }
 
@@ -435,13 +448,9 @@ function parseArgs (args) {
     outputPath,
     workingDir,
     includeUntracked,
-    checkOnly,
-    checkOnlyExplicitlyRequested,
-    nonInteractiveIncompatibleFlags: getNonInteractiveIncompatibleFlags({
-      outputPathSetExplicitly,
-      outputDirSetExplicitly,
-      upload,
-    }),
+    noReport,
+    listUnowned,
+    failOnUnowned,
     checkGlobs,
     teamSuggestions,
     teamSuggestionsWindowDays,
@@ -467,24 +476,6 @@ function isInteractiveStdin () {
   if (process.env.CODEOWNERS_AUDIT_ASSUME_TTY === '1') return true
   if (process.env.CODEOWNERS_AUDIT_ASSUME_TTY === '0') return false
   return Boolean(process.stdin.isTTY)
-}
-
-/**
- * Return CLI flags that are incompatible with non-interactive forced --ci mode.
- * @param {{
- *   outputPathSetExplicitly: boolean,
- *   outputDirSetExplicitly: boolean,
- *   upload: boolean
- * }} options
- * @returns {string[]}
- */
-function getNonInteractiveIncompatibleFlags (options) {
-  /** @type {string[]} */
-  const flags = []
-  if (options.outputPathSetExplicitly) flags.push('--output')
-  if (options.outputDirSetExplicitly) flags.push('--output-dir')
-  if (options.upload) flags.push('--upload')
-  return flags
 }
 
 /**
@@ -541,7 +532,9 @@ function printUsage () {
     ['--output-dir <dir>', 'Output directory for the generated HTML report'],
     ['--cwd <dir>', 'Run git commands from this directory'],
     ['--include-untracked', 'Include untracked files in the analysis'],
-    ['--ci', 'CI ownership check mode (no report; exits non-zero on uncovered files)'],
+    ['--no-report', 'Skip HTML report generation (implies --list-unowned)'],
+    ['--list-unowned', 'Print unowned file paths to stdout'],
+    ['--fail-on-unowned', 'Exit non-zero when one or more files are unowned'],
     ['-g, --glob <pattern>', 'Repeatable file filter for report/check scope (default: **)'],
     ['--team-suggestions', 'Suggest @org/team for uncovered directories'],
     ['--team-suggestions-window-days <days>', 'Git history lookback window for suggestions (default: ' + TEAM_SUGGESTIONS_DEFAULT_WINDOW_DAYS + ')'],
@@ -697,54 +690,52 @@ function openReportInBrowser (target) {
 }
 
 /**
- * Run CLI-only CODEOWNERS ownership check.
- * Exit code 1 means uncovered files; runtime/setup errors use exit code 2.
- * @param {string} repoRoot
- * @param {string[]} files
+ * Emit CLI results for unowned file reporting and failure gating.
+ * Coverage summary is always printed.
+ * Exit code 1 means uncovered files when fail-on-unowned is enabled.
  * @param {{
- *   path: string,
- *   dir: string,
- *   rules: {
- *     pattern: string,
- *     owners: string[],
- *     matches: (scopePath: string, repoPath: string) => boolean
- *   }[]
- * }[]} codeownersDescriptors
+ *   totals: {
+ *     files: number,
+ *     unowned: number
+ *   },
+ *   unownedFiles: string[]
+ * }} report
  * @param {{
- *   includeUntracked: boolean,
+ *   listUnowned: boolean,
+ *   failOnUnowned: boolean,
  *   checkGlobs: string[],
- *   verbose: boolean
  * }} options
  * @returns {void}
  */
-function runOwnershipCheck (repoRoot, files, codeownersDescriptors, options) {
-  const progress = createProgressLogger(options.verbose && files.length >= FILE_ANALYSIS_PROGRESS_INTERVAL)
-  progress('Running --ci on %d files...', files.length)
-  const report = buildReport(repoRoot, files, codeownersDescriptors, options, progress)
+function outputUnownedReportResults (report, options) {
   const globListLabel = options.checkGlobs.length === 1
     ? JSON.stringify(options.checkGlobs[0])
     : JSON.stringify(options.checkGlobs)
 
-  if (report.unownedFiles.length > 0) {
-    console.error(
-      'CODEOWNERS check failed for globs %s (%d analyzed files, %d unowned):',
-      globListLabel,
-      report.totals.files,
-      report.totals.unowned
-    )
+  if (options.listUnowned && report.unownedFiles.length > 0) {
+    console.log('Unowned files:')
     for (const filePath of report.unownedFiles) {
-      console.error('  - %s', filePath)
+      console.log(filePath)
     }
-    process.exitCode = EXIT_CODE_UNCOVERED
-    return
+    console.log('')
   }
 
   console.log(
-    'CODEOWNERS check passed for globs %s (%d analyzed files, %d unowned).',
+    'Coverage summary for globs %s: %d analyzed files, %d unowned.',
     globListLabel,
     report.totals.files,
     report.totals.unowned
   )
+
+  if (options.failOnUnowned && report.unownedFiles.length > 0) {
+    if (!options.listUnowned) {
+      console.error('')
+      for (const filePath of report.unownedFiles) {
+        console.error('  - %s', filePath)
+      }
+    }
+    process.exitCode = EXIT_CODE_UNCOVERED
+  }
 }
 
 /**

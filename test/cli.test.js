@@ -602,56 +602,139 @@ test('--verbose enables verbose progress output', (t) => {
   assert.match(result.stdout, /\[progress \+/)
 })
 
-test('--ci exits non-zero when unowned files exist and skips report generation', (t) => {
+test('--fail-on-unowned exits non-zero when unowned files exist and still writes report', (t) => {
   const repoDir = createRepo(t, {
     trackedFiles: {
       'src/also-unowned.js': 'module.exports = 3\n',
     },
   })
 
-  const result = runCli(['--ci'], { cwd: repoDir })
+  const result = runCli(['--fail-on-unowned'], { cwd: repoDir })
 
   assert.equal(result.status, 1)
-  assert.doesNotMatch(result.stdout, /Wrote CODEOWNERS gap report/)
-  assert.match(result.stderr, /CODEOWNERS check failed/)
+  assert.match(result.stdout, /Wrote CODEOWNERS gap report/)
+  const outputPath = parseOutputPathFromStdout(result.stdout)
+  assert.ok(existsSync(outputPath), 'fail-on-unowned mode should still write report output')
   assert.match(result.stderr, /src\/also-unowned\.js/)
   assert.match(result.stderr, /src\/unowned\.js/)
 })
 
-test('non-interactive stdin defaults to --ci mode', (t) => {
+test('--no-open does not prompt to open report even with interactive stdin', (t) => {
+  const repoDir = createRepo(t)
+  const result = runCli(['--no-open'], {
+    cwd: repoDir,
+    noOpen: false,
+    stdinData: 'no\n',
+  })
+
+  assert.equal(result.status, 0, result.stderr)
+  assert.match(result.stdout, /Wrote CODEOWNERS gap report/)
+  assert.doesNotMatch(result.stdout, /Press Enter to open it in your browser/)
+  assert.doesNotMatch(result.stdout, /Opened report in browser/)
+})
+
+test('--no-report skips HTML output and implies listing unowned files in interactive mode', (t) => {
+  const repoDir = createRepo(t)
+  const result = runCli(['--no-report'], { cwd: repoDir })
+
+  assert.equal(result.status, 0, result.stderr)
+  assert.doesNotMatch(result.stdout, /Wrote CODEOWNERS gap report/)
+  assert.match(result.stdout, /src\/unowned\.js/)
+  assert.doesNotMatch(result.stdout, /Press Enter to open it in your browser/)
+  assert.doesNotMatch(result.stderr, /CODEOWNERS check failed/)
+})
+
+test('--list-unowned prints unowned files to stdout', (t) => {
+  const repoDir = createRepo(t)
+  const result = runCli(['--list-unowned'], { cwd: repoDir })
+
+  assert.equal(result.status, 0, result.stderr)
+  assert.match(result.stdout, /Unowned files:/)
+  assert.match(result.stdout, /CODEOWNERS/)
+  assert.match(result.stdout, /src\/unowned\.js/)
+  assert.match(result.stdout, /\n\nCoverage summary for globs/)
+  assert.doesNotMatch(result.stderr, /CODEOWNERS check failed/)
+})
+
+test('non-interactive stdin defaults to --no-open, --list-unowned, and --fail-on-unowned', (t) => {
   const repoDir = createRepo(t)
   const result = runCli([], {
+    cwd: repoDir,
+    assumeTty: false,
+    noOpen: false,
+    stdinData: '\n',
+  })
+
+  assert.equal(result.status, 1)
+  assert.match(result.stdout, /Standard input is non-interactive; defaulting to --no-open --list-unowned --fail-on-unowned/)
+  assert.match(result.stdout, /Wrote CODEOWNERS gap report/)
+  assert.match(result.stdout, /CODEOWNERS/)
+  assert.match(result.stdout, /src\/unowned\.js/)
+  const outputPath = parseOutputPathFromStdout(result.stdout)
+  assert.ok(existsSync(outputPath), 'non-interactive mode should still write report output')
+  assert.doesNotMatch(result.stdout, /Press Enter to open it in your browser/)
+  assert.doesNotMatch(result.stderr, /CODEOWNERS check failed/)
+})
+
+test('non-interactive mode supports --no-report while still listing and failing on unowned files', (t) => {
+  const repoDir = createRepo(t)
+  const result = runCli(['--no-report'], {
     cwd: repoDir,
     assumeTty: false,
   })
 
   assert.equal(result.status, 1)
-  assert.match(result.stdout, /Standard input is non-interactive; defaulting to --ci mode/)
+  assert.match(result.stdout, /Standard input is non-interactive; defaulting to --no-open --list-unowned --fail-on-unowned/)
+  assert.match(result.stdout, /CODEOWNERS/)
   assert.doesNotMatch(result.stdout, /Wrote CODEOWNERS gap report/)
-  assert.match(result.stderr, /CODEOWNERS check failed/)
+  assert.match(result.stdout, /src\/unowned\.js/)
+  assert.doesNotMatch(result.stderr, /CODEOWNERS check failed/)
 })
 
-test('non-interactive stdin rejects report-only flags unless --ci is explicit', (t) => {
+test('non-interactive stdin allows output flags while preserving non-interactive defaults', (t) => {
   const repoDir = createRepo(t)
-  const result = runCli(['--upload'], {
+  const outputPath = path.join('reports', 'custom-non-tty-report.html')
+  const outputDir = path.join('reports-dir')
+
+  const outputResult = runCli(['--output', outputPath], {
     cwd: repoDir,
     assumeTty: false,
   })
+  assert.equal(outputResult.status, 1)
+  assert.match(outputResult.stdout, /Standard input is non-interactive; defaulting to --no-open --list-unowned --fail-on-unowned/)
+  assert.match(outputResult.stdout, /Wrote CODEOWNERS gap report/)
+  assert.match(outputResult.stdout, /src\/unowned\.js/)
+  assert.ok(existsSync(path.join(repoDir, outputPath)))
+  assert.doesNotMatch(outputResult.stderr, /CODEOWNERS check failed/)
 
-  assert.equal(result.status, 2)
-  assert.match(result.stderr, /Standard input is non-interactive, so this command defaults to --ci mode/)
-  assert.match(result.stderr, /--upload/)
+  const outputDirResult = runCli(['--output-dir', outputDir], {
+    cwd: repoDir,
+    assumeTty: false,
+  })
+  assert.equal(outputDirResult.status, 1)
+  assert.match(outputDirResult.stdout, /Wrote CODEOWNERS gap report/)
+  assert.match(outputDirResult.stdout, /src\/unowned\.js/)
+  assert.ok(existsSync(path.join(repoDir, outputDir, defaultOutputFile)))
+  assert.doesNotMatch(outputDirResult.stderr, /CODEOWNERS check failed/)
 })
 
-test('--glob filters files before ownership validation in --ci mode', (t) => {
+test('--no-report cannot be combined with --upload', (t) => {
+  const repoDir = createRepo(t)
+  const result = runCli(['--no-report', '--upload'], { cwd: repoDir })
+
+  assert.equal(result.status, 2)
+  assert.match(result.stderr, /--no-report cannot be combined with --upload/)
+})
+
+test('--glob filters files before ownership validation when fail-on-unowned is enabled', (t) => {
   const repoDir = createRepo(t)
 
-  const passingResult = runCli(['--ci', '-g', 'src/owned.js'], { cwd: repoDir })
+  const passingResult = runCli(['--fail-on-unowned', '-g', 'src/owned.js'], { cwd: repoDir })
   assert.equal(passingResult.status, 0, passingResult.stderr)
-  assert.match(passingResult.stdout, /CODEOWNERS check passed/)
-  assert.doesNotMatch(passingResult.stdout, /Wrote CODEOWNERS gap report/)
+  assert.match(passingResult.stdout, /Coverage summary for globs/)
+  assert.match(passingResult.stdout, /Wrote CODEOWNERS gap report/)
 
-  const failingResult = runCli(['--ci', '--glob=src/*.js'], { cwd: repoDir })
+  const failingResult = runCli(['--fail-on-unowned', '--glob=src/*.js'], { cwd: repoDir })
   assert.equal(failingResult.status, 1)
   assert.match(failingResult.stderr, /src\/unowned\.js/)
 })
@@ -660,7 +743,7 @@ test('--glob can be repeated and combines as a union', (t) => {
   const repoDir = createRepo(t)
 
   const result = runCli(
-    ['--ci', '--glob', 'src/owned.js', '--glob', 'src/unowned.js'],
+    ['--fail-on-unowned', '--glob', 'src/owned.js', '--glob', 'src/unowned.js'],
     { cwd: repoDir }
   )
 
@@ -668,7 +751,7 @@ test('--glob can be repeated and combines as a union', (t) => {
   assert.match(result.stderr, /src\/unowned\.js/)
 })
 
-test('--glob also scopes report generation without --ci mode', (t) => {
+test('--glob also scopes report generation without fail-on-unowned mode', (t) => {
   const repoDir = createRepo(t)
 
   const result = runCli(['--glob', 'src/owned.js', '--output', 'glob-scoped.html'], { cwd: repoDir })
@@ -681,34 +764,6 @@ test('--glob also scopes report generation without --ci mode', (t) => {
   assert.deepEqual(reportData.unownedFiles, [])
 })
 
-test('--check and --check-only are rejected after flag rename', (t) => {
-  const repoDir = createRepo(t)
-
-  const result = runCli(['--check'], { cwd: repoDir })
-  assert.equal(result.status, 2)
-  assert.match(result.stderr, /Unknown argument: --check/)
-
-  const equalsResult = runCli(['--check=src/owned.js'], { cwd: repoDir })
-  assert.equal(equalsResult.status, 2)
-  assert.match(equalsResult.stderr, /Unknown argument: --check=src\/owned\.js/)
-
-  const oldCheckOnlyResult = runCli(['--check-only'], { cwd: repoDir })
-  assert.equal(oldCheckOnlyResult.status, 2)
-  assert.match(oldCheckOnlyResult.stderr, /Unknown argument: --check-only/)
-})
-
-test('--github-token-env is rejected after flag rename', (t) => {
-  const repoDir = createRepo(t)
-
-  const result = runCli(['--github-token-env', 'TEST_GH_TOKEN'], { cwd: repoDir })
-  assert.equal(result.status, 2)
-  assert.match(result.stderr, /Unknown argument: --github-token-env/)
-
-  const equalsResult = runCli(['--github-token-env=TEST_GH_TOKEN'], { cwd: repoDir })
-  assert.equal(equalsResult.status, 2)
-  assert.match(equalsResult.stderr, /Unknown argument: --github-token-env=TEST_GH_TOKEN/)
-})
-
 test('directory CODEOWNERS pattern without trailing slash owns descendants', (t) => {
   const repoDir = createRepo(t, {
     codeowners: '/integration-tests/profiler @team\n',
@@ -717,10 +772,10 @@ test('directory CODEOWNERS pattern without trailing slash owns descendants', (t)
     },
   })
 
-  const result = runCli(['--ci', '--glob', 'integration-tests/profiler/profiler.spec.js'], { cwd: repoDir })
+  const result = runCli(['--fail-on-unowned', '--glob', 'integration-tests/profiler/profiler.spec.js'], { cwd: repoDir })
 
   assert.equal(result.status, 0, result.stderr)
-  assert.match(result.stdout, /CODEOWNERS check passed/)
+  assert.match(result.stdout, /Coverage summary for globs/)
 })
 
 test('wildcard root pattern does not own nested descendants', (t) => {
@@ -731,7 +786,7 @@ test('wildcard root pattern does not own nested descendants', (t) => {
     },
   })
 
-  const result = runCli(['--ci', '--glob', 'nested/deep/file.js'], { cwd: repoDir })
+  const result = runCli(['--fail-on-unowned', '--glob', 'nested/deep/file.js'], { cwd: repoDir })
 
   assert.equal(result.status, 1)
   assert.match(result.stderr, /nested\/deep\/file\.js/)
@@ -745,10 +800,10 @@ test('wildcard in middle still allows directory descendant ownership', (t) => {
     },
   })
 
-  const result = runCli(['--ci', '--glob', 'packages/dd-trace/test-crashtracking/crashtracker.spec.js'], { cwd: repoDir })
+  const result = runCli(['--fail-on-unowned', '--glob', 'packages/dd-trace/test-crashtracking/crashtracker.spec.js'], { cwd: repoDir })
 
   assert.equal(result.status, 0, result.stderr)
-  assert.match(result.stdout, /CODEOWNERS check passed/)
+  assert.match(result.stdout, /Coverage summary for globs/)
 })
 
 test('top-level .github/CODEOWNERS applies rules repository-wide', (t) => {
@@ -802,16 +857,15 @@ test('--help prints usage without failing', (t) => {
   assert.match(result.stdout, /--output-dir/)
   assert.match(result.stdout, /--cwd/)
   assert.match(result.stdout, /--no-open/)
-  assert.match(result.stdout, /--ci/)
+  assert.match(result.stdout, /--no-report/)
+  assert.match(result.stdout, /--list-unowned/)
+  assert.match(result.stdout, /--fail-on-unowned/)
   assert.match(result.stdout, /--glob/)
   assert.match(result.stdout, /-g, --glob <pattern>/)
-  assert.doesNotMatch(result.stdout, /(^|\s)--check(?:\s|$|\[|=)/m)
-  assert.doesNotMatch(result.stdout, /(^|\s)--check-only(?:\s|$|\[|=)/m)
   assert.match(result.stdout, /--team-suggestions/)
   assert.match(result.stdout, /--team-suggestions-ignore-teams/)
   assert.match(result.stdout, /--github-token/)
   assert.match(result.stdout, /--verbose/)
-  assert.doesNotMatch(result.stdout, /--github-token-env/)
   assert.match(result.stdout, /--version/)
   assert.match(result.stdout, /  -o, --output <path> {6}Output HTML file path/)
   assert.match(result.stdout, /--team-suggestions-window-days <days>\n {27}Git history lookback window for suggestions/)
@@ -1053,10 +1107,6 @@ test('unknown and invalid options fail with a useful error', (t) => {
   const missingWorkingDirResult = runCli(['--cwd'], { cwd: repoDir })
   assert.equal(missingWorkingDirResult.status, 2)
   assert.match(missingWorkingDirResult.stderr, /Missing value for --cwd/)
-
-  const removedCheckResult = runCli(['--check='], { cwd: repoDir })
-  assert.equal(removedCheckResult.status, 2)
-  assert.match(removedCheckResult.stderr, /Unknown argument: --check=/)
 
   const missingGlobResult = runCli(['--glob'], { cwd: repoDir })
   assert.equal(missingGlobResult.status, 2)

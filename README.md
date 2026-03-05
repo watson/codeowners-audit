@@ -57,8 +57,14 @@ By default, the tool:
 - writes the report to a temporary path
 - prompts you to press Enter before opening the report in your default browser
 
-When standard input is non-interactive (no TTY), the command defaults to `--ci` mode automatically and never opens a browser.
-In that non-interactive mode, report-only flags such as `--output`, `--output-dir`, and `--upload` are rejected unless you explicitly choose `--ci`.
+When standard input is non-interactive (no TTY), the command automatically behaves as if
+`--no-open --list-unowned --fail-on-unowned` were specified:
+- it never prompts to open a browser
+- it prints all unowned file paths to stdout
+- it exits non-zero when uncovered files exist
+
+Use `--output` or `--output-dir` for deterministic artifact paths, or `--no-report` to skip writing HTML entirely.
+In interactive mode, `--no-report` implies `--list-unowned` so output still stays useful.
 
 ### Options
 
@@ -68,7 +74,9 @@ In that non-interactive mode, report-only flags such as `--output`, `--output-di
 | `--output-dir <dir>` | Output directory for the generated HTML report |
 | `--cwd <dir>` | Run git commands from this directory |
 | `--include-untracked` | Include untracked files in the analysis |
-| `--ci` | CI ownership check mode (no report; exits non-zero on uncovered files) |
+| `--no-report` | Skip HTML report generation (implies `--list-unowned`) |
+| `--list-unowned` | Print unowned file paths to stdout |
+| `--fail-on-unowned` | Exit non-zero when one or more files are unowned |
 | `-g, --glob <pattern>` | Repeatable file filter for report/check scope (default: `**`) |
 | `--team-suggestions` | Suggest `@org/team` for uncovered directories |
 | `--team-suggestions-window-days <days>` | Git history lookback window for suggestions (default: `365`) |
@@ -111,13 +119,15 @@ codeowners-audit --cwd ~/code/my-repo
 
 ## Using in CI
 
-Use `--ci` to turn `codeowners-audit` into a CI gate.
-In this mode no HTML report is generated; the command only validates ownership coverage.
+Most CI systems (including GitHub Actions) run in a non-interactive environment (no TTY on stdin).
+In non-interactive environments, `codeowners-audit` automatically:
+- disables browser prompts (`--no-open`)
+- prints unowned files to stdout (`--list-unowned`)
+- exits `1` when unowned files exist (`--fail-on-unowned`)
 
-### What happens in `--ci` mode
-
+Exit code behavior:
 - Exit code `0`: all matched files are covered by `CODEOWNERS`.
-- Exit code `1`: one or more matched files are uncovered (the uncovered file paths are printed to stderr).
+- Exit code `1`: one or more matched files are uncovered.
 - Exit code `2`: runtime/setup error (for example: not in a Git repository, missing `CODEOWNERS`, invalid arguments).
 
 ### Common CI commands
@@ -125,26 +135,44 @@ In this mode no HTML report is generated; the command only validates ownership c
 Validate all tracked files:
 
 ```bash
-codeowners-audit --ci
+codeowners-audit
+```
+
+Validate all tracked files without writing HTML:
+
+```bash
+codeowners-audit --no-report
+```
+
+Validate and write a report artifact to a known path:
+
+```bash
+codeowners-audit --output codeowners-gaps-report.html
+```
+
+Validate and write reports into an artifact directory:
+
+```bash
+codeowners-audit --output-dir artifacts
 ```
 
 Validate only a subset (for example spec files):
 
 ```bash
-codeowners-audit --ci --glob "**/*.spec.js"
+codeowners-audit --glob "**/*.spec.js"
 ```
 
 Validate multiple subsets in one run (combined as a union):
 
 ```bash
-codeowners-audit --ci --glob "src/**/*.js" --glob "test/**/*.js"
+codeowners-audit --glob "src/**/*.js" --glob "test/**/*.js"
 ```
 
 ### GitHub Actions example
 
 ```yaml
 - name: Verify CODEOWNERS coverage
-  run: npx codeowners-audit --ci
+  run: npx codeowners-audit --no-report
 ```
 
 ## How matching works
