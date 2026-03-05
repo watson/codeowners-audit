@@ -11,6 +11,9 @@ const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '
 const cliPath = path.join(projectRoot, 'report.js')
 const packageVersion = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version
 const defaultOutputFile = 'codeowners-gaps-report.html'
+const DEFAULT_EXEC_FILE_MAX_BUFFER_BYTES = 1024 * 1024
+const GIT_BUFFER_STRESS_TARGET_BYTES = DEFAULT_EXEC_FILE_MAX_BUFFER_BYTES + (96 * 1024)
+const ZENBIN_UPLOAD_STRESS_TARGET_BYTES = 1280 * 1024
 
 function parseOutputPathFromStdout (stdout) {
   const match = stdout.match(/Wrote CODEOWNERS gap report to (.+) \(\d+ analyzed files, \d+ unowned\)\./)
@@ -133,6 +136,29 @@ function createRepo (t, options = {}) {
   }
 
   return repoDir
+}
+
+function addTrackedBulkFilesForStress (repoDir, minimumGitListBytes) {
+  const segmentA = 'a'.repeat(120)
+  const segmentB = 'b'.repeat(120)
+  const segmentC = 'c'.repeat(120)
+  const fileSuffix = 'd'.repeat(120)
+  const bulkRelativeDir = path.posix.join('bulk', segmentA, segmentB, segmentC)
+  const bulkAbsoluteDir = path.join(repoDir, bulkRelativeDir)
+  mkdirSync(bulkAbsoluteDir, { recursive: true })
+
+  let fileCount = 0
+  let estimatedGitListBytes = 0
+  while (estimatedGitListBytes < minimumGitListBytes) {
+    const fileName = `file-${String(fileCount).padStart(5, '0')}-${fileSuffix}.txt`
+    writeFileSync(path.join(bulkAbsoluteDir, fileName), 'x\n', 'utf8')
+    const relativePath = bulkRelativeDir + '/' + fileName
+    estimatedGitListBytes += Buffer.byteLength(relativePath, 'utf8') + 1
+    fileCount++
+  }
+
+  runGit(repoDir, ['add', 'bulk'])
+  return { fileCount, estimatedGitListBytes }
 }
 
 function parseReportDataFromHtml (html) {
@@ -606,16 +632,11 @@ test('top-level .github/CODEOWNERS applies rules repository-wide', (t) => {
 
 test('handles large repositories without git stdout buffer overflow', (t) => {
   const repoDir = createRepo(t)
-  const longSegment = 'x'.repeat(160)
-  const largeFileCount = 6500
-
-  for (let index = 0; index < largeFileCount; index++) {
-    const filePath = path.join(repoDir, 'bulk', `file-${String(index).padStart(5, '0')}-${longSegment}.txt`)
-    mkdirSync(path.dirname(filePath), { recursive: true })
-    writeFileSync(filePath, 'x\n', 'utf8')
-  }
-
-  runGit(repoDir, ['add', 'bulk'])
+  const stressData = addTrackedBulkFilesForStress(repoDir, GIT_BUFFER_STRESS_TARGET_BYTES)
+  assert.ok(
+    stressData.estimatedGitListBytes > DEFAULT_EXEC_FILE_MAX_BUFFER_BYTES,
+    'fixture should exceed the historical 1 MiB execFileSync maxBuffer default'
+  )
 
   const result = runCli(['--output', 'large-repo-report.html'], { cwd: repoDir })
   assert.equal(result.status, 0, result.stderr)
@@ -810,14 +831,7 @@ test('--upload fails with a clear message when the report is too large', (t) => 
   )
   chmodSync(fakeCurlPath, 0o755)
 
-  const longSegment = 'x'.repeat(160)
-  const largeFileCount = 6500
-  for (let index = 0; index < largeFileCount; index++) {
-    const filePath = path.join(repoDir, 'bulk', `file-${String(index).padStart(5, '0')}-${longSegment}.txt`)
-    mkdirSync(path.dirname(filePath), { recursive: true })
-    writeFileSync(filePath, 'x\n', 'utf8')
-  }
-  runGit(repoDir, ['add', 'bulk'])
+  addTrackedBulkFilesForStress(repoDir, ZENBIN_UPLOAD_STRESS_TARGET_BYTES)
 
   const result = runCli(['--upload'], {
     cwd: repoDir,
