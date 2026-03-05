@@ -263,15 +263,12 @@ test('team suggestions map editors to repo teams for 0% covered directories', as
     [
       '--team-suggestions',
       '--github-org', 'test-org',
-      '--github-token-env', 'TEST_GH_TOKEN',
+      '--github-token', 'test-token',
       '--github-api-base-url', apiBaseUrl,
       '--output', 'team-suggestions.html',
     ],
     {
       cwd: repoDir,
-      env: {
-        TEST_GH_TOKEN: 'test-token',
-      },
     }
   )
   assert.equal(result.status, 0, result.stderr)
@@ -281,6 +278,8 @@ test('team suggestions map editors to repo teams for 0% covered directories', as
   assert.equal(reportData.directoryTeamSuggestionsMeta.enabled, true)
   assert.equal(reportData.directoryTeamSuggestionsMeta.org, 'test-org')
   assert.equal(reportData.directoryTeamSuggestionsMeta.source, 'repo-teams')
+  assert.equal(reportData.directoryTeamSuggestionsMeta.tokenSource, 'cli')
+  assert.equal(JSON.stringify(reportData).includes('test-token'), false)
 
   const suggestion = reportData.directoryTeamSuggestions.find(row => row.path === 'pkg/uncovered')
   assert.ok(suggestion, 'should include suggestion for the uncovered folder')
@@ -307,10 +306,15 @@ test('team suggestions return no-auth status when token is missing', (t) => {
     [
       '--team-suggestions',
       '--github-org', 'test-org',
-      '--github-token-env', 'TEST_GH_TOKEN',
       '--output', 'no-auth-suggestions.html',
     ],
-    { cwd: repoDir }
+    {
+      cwd: repoDir,
+      env: {
+        GITHUB_TOKEN: '',
+        GH_TOKEN: '',
+      },
+    }
   )
   assert.equal(result.status, 0, result.stderr)
   const html = readFileSync(path.join(repoDir, 'no-auth-suggestions.html'), 'utf8')
@@ -322,8 +326,94 @@ test('team suggestions return no-auth status when token is missing', (t) => {
   assert.equal(reportData.directoryTeamSuggestionsMeta.enabled, true)
   assert.match(
     reportData.directoryTeamSuggestionsMeta.warnings.join('\n'),
-    /Missing token/
+    /Missing GitHub token/
   )
+})
+
+test('team suggestions fall back to GITHUB_TOKEN env when --github-token is omitted', async (t) => {
+  const repoDir = createRepo(t, {
+    remoteUrl: 'git@github.com:test-org/test-repo.git',
+    trackedFiles: {
+      'pkg/uncovered/a.js': 'module.exports = "a1"\n',
+      'pkg/uncovered/b.js': 'module.exports = "b1"\n',
+    },
+  })
+
+  commitStaged(repoDir, 'initial snapshot outside window', 500, 'Bootstrap', 'bootstrap@example.com')
+
+  writeFileSync(path.join(repoDir, 'pkg/uncovered/a.js'), 'module.exports = "a2"\n', 'utf8')
+  runGit(repoDir, ['add', 'pkg/uncovered/a.js'])
+  commitStaged(repoDir, 'alice update 1', 30, 'Alice', '123+alice@users.noreply.github.com')
+
+  writeFileSync(path.join(repoDir, 'pkg/uncovered/a.js'), 'module.exports = "a3"\n', 'utf8')
+  runGit(repoDir, ['add', 'pkg/uncovered/a.js'])
+  commitStaged(repoDir, 'alice update 2', 20, 'Alice', '123+alice@users.noreply.github.com')
+
+  writeFileSync(path.join(repoDir, 'pkg/uncovered/b.js'), 'module.exports = "b2"\n', 'utf8')
+  runGit(repoDir, ['add', 'pkg/uncovered/b.js'])
+  commitStaged(repoDir, 'bob update', 10, 'Bob', '456+bob@users.noreply.github.com')
+
+  const server = createServer((req, res) => {
+    const url = new URL(req.url || '/', 'http://127.0.0.1')
+    res.setHeader('content-type', 'application/json')
+    if (url.pathname === '/repos/test-org/test-repo/teams') {
+      res.end(JSON.stringify([
+        { slug: 'alpha-team', name: 'Alpha Team' },
+        { slug: 'beta-team', name: 'Beta Team' },
+      ]))
+      return
+    }
+    if (url.pathname === '/orgs/test-org/teams/alpha-team/members') {
+      res.end(JSON.stringify([
+        { login: 'alice' },
+      ]))
+      return
+    }
+    if (url.pathname === '/orgs/test-org/teams/beta-team/members') {
+      res.end(JSON.stringify([
+        { login: 'bob' },
+      ]))
+      return
+    }
+    res.statusCode = 404
+    res.end(JSON.stringify({ message: 'not found' }))
+  })
+  await /** @type {Promise<void>} */ (
+    new Promise((resolve) => {
+      server.listen(0, '127.0.0.1', resolve)
+    })
+  )
+  t.after(() => {
+    server.close()
+  })
+  const address = server.address()
+  assert.ok(address && typeof address === 'object')
+  const apiBaseUrl = 'http://127.0.0.1:' + address.port
+
+  const result = await runCliAsync(
+    [
+      '--team-suggestions',
+      '--github-org', 'test-org',
+      '--github-api-base-url', apiBaseUrl,
+      '--output', 'team-suggestions-env-fallback.html',
+    ],
+    {
+      cwd: repoDir,
+      env: {
+        GITHUB_TOKEN: 'test-token',
+        GH_TOKEN: '',
+      },
+    }
+  )
+  assert.equal(result.status, 0, result.stderr)
+
+  const html = readFileSync(path.join(repoDir, 'team-suggestions-env-fallback.html'), 'utf8')
+  const reportData = parseReportDataFromHtml(html)
+  const suggestion = reportData.directoryTeamSuggestions.find(row => row.path === 'pkg/uncovered')
+  assert.ok(suggestion, 'should include suggestion for the uncovered folder')
+  assert.equal(suggestion.status, 'ok')
+  assert.equal(reportData.directoryTeamSuggestionsMeta.tokenSource, 'GITHUB_TOKEN')
+  assert.equal(JSON.stringify(reportData).includes('test-token'), false)
 })
 
 test('team suggestions support ignored team list', async (t) => {
@@ -386,16 +476,13 @@ test('team suggestions support ignored team list', async (t) => {
     [
       '--team-suggestions',
       '--github-org', 'test-org',
-      '--github-token-env', 'TEST_GH_TOKEN',
+      '--github-token', 'test-token',
       '--github-api-base-url', apiBaseUrl,
       '--team-suggestions-ignore-teams', 'alpha-team',
       '--output', 'ignore-team-suggestions.html',
     ],
     {
       cwd: repoDir,
-      env: {
-        TEST_GH_TOKEN: 'test-token',
-      },
     }
   )
   assert.equal(result.status, 0, result.stderr)
@@ -564,6 +651,18 @@ test('--check and --check-only are rejected after flag rename', (t) => {
   assert.match(oldCheckOnlyResult.stderr, /Unknown argument: --check-only/)
 })
 
+test('--github-token-env is rejected after flag rename', (t) => {
+  const repoDir = createRepo(t)
+
+  const result = runCli(['--github-token-env', 'TEST_GH_TOKEN'], { cwd: repoDir })
+  assert.equal(result.status, 2)
+  assert.match(result.stderr, /Unknown argument: --github-token-env/)
+
+  const equalsResult = runCli(['--github-token-env=TEST_GH_TOKEN'], { cwd: repoDir })
+  assert.equal(equalsResult.status, 2)
+  assert.match(equalsResult.stderr, /Unknown argument: --github-token-env=TEST_GH_TOKEN/)
+})
+
 test('directory CODEOWNERS pattern without trailing slash owns descendants', (t) => {
   const repoDir = createRepo(t, {
     codeowners: '/integration-tests/profiler @team\n',
@@ -664,7 +763,8 @@ test('--help prints usage without failing', (t) => {
   assert.doesNotMatch(result.stdout, /(^|\s)--check-only(?:\s|$|\[|=)/m)
   assert.match(result.stdout, /--team-suggestions/)
   assert.match(result.stdout, /--team-suggestions-ignore-teams/)
-  assert.match(result.stdout, /--github-token-env/)
+  assert.match(result.stdout, /--github-token/)
+  assert.doesNotMatch(result.stdout, /--github-token-env/)
   assert.match(result.stdout, /--version/)
   assert.match(result.stdout, /  -o, --output <path> {6}Output HTML file path/)
   assert.match(result.stdout, /--team-suggestions-window-days <days>\n {27}Git history lookback window for suggestions/)

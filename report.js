@@ -19,7 +19,6 @@ const ZENBIN_MAX_UPLOAD_BYTES = 1024 * 1024
 const GIT_COMMAND_MAX_BUFFER = 64 * 1024 * 1024
 const TEAM_SUGGESTIONS_DEFAULT_WINDOW_DAYS = 365
 const TEAM_SUGGESTIONS_DEFAULT_TOP = 3
-const TEAM_SUGGESTIONS_TOKEN_ENV_DEFAULT = 'GITHUB_TOKEN'
 const GITHUB_API_BASE_URL = 'https://api.github.com'
 const FILE_ANALYSIS_PROGRESS_INTERVAL = 20000
 const EXIT_CODE_UNCOVERED = 1
@@ -149,7 +148,7 @@ async function main () {
  *   teamSuggestionsTop: number,
  *   teamSuggestionsIgnoreTeams: string[],
  *   githubOrg: string|null,
- *   githubTokenEnv: string,
+ *   githubToken?: string,
  *   githubApiBaseUrl: string,
  *   upload: boolean,
  *   open: boolean,
@@ -174,7 +173,8 @@ function parseArgs (args) {
   /** @type {string[]} */
   let teamSuggestionsIgnoreTeams = []
   let githubOrg = null
-  let githubTokenEnv = TEAM_SUGGESTIONS_TOKEN_ENV_DEFAULT
+  let githubToken = undefined
+  let githubTokenSetExplicitly = false
   let githubApiBaseUrl = GITHUB_API_BASE_URL
   let upload = false
   let open = true
@@ -286,14 +286,16 @@ function parseArgs (args) {
       continue
     }
 
-    if (arg === '--github-token-env') {
-      githubTokenEnv = args[index + 1]
+    if (arg === '--github-token') {
+      githubToken = args[index + 1]
+      githubTokenSetExplicitly = true
       index++
       continue
     }
 
-    if (arg.startsWith('--github-token-env=')) {
-      githubTokenEnv = arg.slice('--github-token-env='.length)
+    if (arg.startsWith('--github-token=')) {
+      githubToken = arg.slice('--github-token='.length)
+      githubTokenSetExplicitly = true
       continue
     }
 
@@ -377,8 +379,8 @@ function parseArgs (args) {
     throw new Error('Missing value for --github-org.')
   }
 
-  if (!help && !githubTokenEnv) {
-    throw new Error('Missing value for --github-token-env.')
+  if (!help && githubTokenSetExplicitly && !githubToken) {
+    throw new Error('Missing value for --github-token.')
   }
 
   if (!help && !githubApiBaseUrl) {
@@ -410,7 +412,7 @@ function parseArgs (args) {
     teamSuggestionsTop,
     teamSuggestionsIgnoreTeams,
     githubOrg,
-    githubTokenEnv,
+    githubToken,
     githubApiBaseUrl,
     upload,
     open,
@@ -437,7 +439,7 @@ function printUsage () {
     ['--team-suggestions-top <n>', 'Top team suggestions to keep per directory (default: ' + TEAM_SUGGESTIONS_DEFAULT_TOP + ')'],
     ['--team-suggestions-ignore-teams <list>', 'Comma-separated team slugs or @org/slug entries to exclude from suggestions'],
     ['--github-org <org>', 'Override GitHub org for team lookups'],
-    ['--github-token-env <name>', 'Env var containing GitHub token (default: ' + TEAM_SUGGESTIONS_TOKEN_ENV_DEFAULT + '; falls back to GH_TOKEN)'],
+    ['--github-token <token>', 'GitHub token for team lookups (falls back to GITHUB_TOKEN, then GH_TOKEN)'],
     ['--github-api-base-url <url>', 'GitHub API base URL (default: ' + GITHUB_API_BASE_URL + ')'],
     ['--upload', 'Upload to ' + UPLOAD_PROVIDER + ' and print a public URL'],
     ['--no-open', 'Do not open the report in your browser'],
@@ -1036,7 +1038,7 @@ function compareCodeownersDescriptor (first, second) {
  *   includeUntracked: boolean,
  *   teamSuggestions?: boolean,
  *   teamSuggestionsIgnoreTeams?: string[],
- *   githubTokenEnv?: string,
+ *   githubToken?: string,
  *   teamSuggestionsWindowDays?: number
  * }} options
  * @param {(message: string, ...values: any[]) => void} progress
@@ -1063,7 +1065,7 @@ function compareCodeownersDescriptor (first, second) {
  *     org: string|null,
  *     source: 'repo-teams'|'org-teams'|'none',
  *     ignoredTeams: string[],
- *     tokenEnv: string,
+ *     tokenSource: string,
  *     windowDays: number,
  *     warnings: string[]
  *   }
@@ -1147,7 +1149,7 @@ function buildReport (repoRoot, files, codeownersDescriptors, options, progress 
       org: null,
       source: 'none',
       ignoredTeams: options.teamSuggestionsIgnoreTeams || [],
-      tokenEnv: options.githubTokenEnv || TEAM_SUGGESTIONS_TOKEN_ENV_DEFAULT,
+      tokenSource: options.githubToken ? 'cli' : 'unresolved',
       windowDays: options.teamSuggestionsWindowDays || TEAM_SUGGESTIONS_DEFAULT_WINDOW_DAYS,
       warnings: [],
     },
@@ -1296,7 +1298,7 @@ function toPercent (value, total) {
  *     org: string|null,
  *     source: 'repo-teams'|'org-teams'|'none',
  *     ignoredTeams: string[],
- *     tokenEnv: string,
+ *     tokenSource: string,
  *     windowDays: number,
  *     warnings: string[]
  *   }
