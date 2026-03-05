@@ -8,7 +8,7 @@
 
 ## Playground
 
-See how ownership coverage looks in practice with [this interactive report](https://htmlpreview.github.io/?https://raw.githubusercontent.com/watson/codeowners-audit/main/example.html) for the `nodejs/node` repository.
+See how ownership coverage looks in practice with [this interactive report](https://watson.github.io/codeowners-audit/example.html) for the `nodejs/node` repository.
 
 ## Why this exists
 
