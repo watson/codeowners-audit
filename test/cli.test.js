@@ -16,9 +16,9 @@ const GIT_BUFFER_STRESS_TARGET_BYTES = DEFAULT_EXEC_FILE_MAX_BUFFER_BYTES + (96 
 const ZENBIN_UPLOAD_STRESS_TARGET_BYTES = 1280 * 1024
 
 function parseOutputPathFromStdout (stdout) {
-  const match = stdout.match(/Wrote CODEOWNERS gap report to (.+) \(\d+ analyzed files, \d+ unowned\)\./)
+  const match = stdout.match(/Report ready at (.+)/)
   assert.ok(match, 'stdout should include the report output path')
-  return match[1]
+  return match[1].trim()
 }
 
 function buildCliEnv (options = {}) {
@@ -187,7 +187,7 @@ test('running the bin creates a report in temp dir with expected shape', (t) => 
   assert.ok(outputPath.startsWith(tmpdir()), 'default report should be written in a temp directory')
   assert.ok(existsSync(outputPath), 'default report should be written to disk')
   assert.equal(existsSync(path.join(repoDir, defaultOutputFile)), false, 'default report should not be written in repository root')
-  assert.match(result.stdout, /Wrote CODEOWNERS gap report/)
+  assert.match(result.stdout, /Report ready at/)
 
   const html = readFileSync(outputPath, 'utf8')
   assert.match(html, /<title>CODEOWNERS Gap Report<\/title>/)
@@ -651,7 +651,7 @@ test('--fail-on-unowned exits non-zero when unowned files exist and still writes
   const result = runCli(['--fail-on-unowned'], { cwd: repoDir })
 
   assert.equal(result.status, 1)
-  assert.match(result.stdout, /Wrote CODEOWNERS gap report/)
+  assert.match(result.stdout, /Report ready at/)
   const outputPath = parseOutputPathFromStdout(result.stdout)
   assert.ok(existsSync(outputPath), 'fail-on-unowned mode should still write report output')
   assert.match(result.stderr, /src\/also-unowned\.js/)
@@ -667,7 +667,7 @@ test('--no-open does not prompt to open report even with interactive stdin', (t)
   })
 
   assert.equal(result.status, 0, result.stderr)
-  assert.match(result.stdout, /Wrote CODEOWNERS gap report/)
+  assert.match(result.stdout, /Report ready at/)
   assert.doesNotMatch(result.stdout, /Press Enter to open it in your browser/)
   assert.doesNotMatch(result.stdout, /Opened report in browser/)
 })
@@ -677,7 +677,7 @@ test('--no-report skips HTML output and implies listing unowned files in interac
   const result = runCli(['--no-report'], { cwd: repoDir })
 
   assert.equal(result.status, 0, result.stderr)
-  assert.doesNotMatch(result.stdout, /Wrote CODEOWNERS gap report/)
+  assert.doesNotMatch(result.stdout, /Report ready at/)
   assert.match(result.stdout, /src\/unowned\.js/)
   assert.doesNotMatch(result.stdout, /Press Enter to open it in your browser/)
   assert.doesNotMatch(result.stderr, /CODEOWNERS check failed/)
@@ -706,7 +706,7 @@ test('non-interactive stdin defaults to --no-open, --list-unowned, and --fail-on
 
   assert.equal(result.status, 1)
   assert.match(result.stdout, /Standard input is non-interactive; defaulting to --no-open --list-unowned --fail-on-unowned/)
-  assert.match(result.stdout, /Wrote CODEOWNERS gap report/)
+  assert.match(result.stdout, /Report ready at/)
   assert.match(result.stdout, /CODEOWNERS/)
   assert.match(result.stdout, /src\/unowned\.js/)
   const outputPath = parseOutputPathFromStdout(result.stdout)
@@ -725,7 +725,7 @@ test('non-interactive mode supports --no-report while still listing and failing 
   assert.equal(result.status, 1)
   assert.match(result.stdout, /Standard input is non-interactive; defaulting to --no-open --list-unowned --fail-on-unowned/)
   assert.match(result.stdout, /CODEOWNERS/)
-  assert.doesNotMatch(result.stdout, /Wrote CODEOWNERS gap report/)
+  assert.doesNotMatch(result.stdout, /Report ready at/)
   assert.match(result.stdout, /src\/unowned\.js/)
   assert.doesNotMatch(result.stderr, /CODEOWNERS check failed/)
 })
@@ -741,7 +741,7 @@ test('non-interactive stdin allows output flags while preserving non-interactive
   })
   assert.equal(outputResult.status, 1)
   assert.match(outputResult.stdout, /Standard input is non-interactive; defaulting to --no-open --list-unowned --fail-on-unowned/)
-  assert.match(outputResult.stdout, /Wrote CODEOWNERS gap report/)
+  assert.match(outputResult.stdout, /Report ready at/)
   assert.match(outputResult.stdout, /src\/unowned\.js/)
   assert.ok(existsSync(path.join(repoDir, outputPath)))
   assert.doesNotMatch(outputResult.stderr, /CODEOWNERS check failed/)
@@ -751,7 +751,7 @@ test('non-interactive stdin allows output flags while preserving non-interactive
     assumeTty: false,
   })
   assert.equal(outputDirResult.status, 1)
-  assert.match(outputDirResult.stdout, /Wrote CODEOWNERS gap report/)
+  assert.match(outputDirResult.stdout, /Report ready at/)
   assert.match(outputDirResult.stdout, /src\/unowned\.js/)
   assert.ok(existsSync(path.join(repoDir, outputDir, defaultOutputFile)))
   assert.doesNotMatch(outputDirResult.stderr, /CODEOWNERS check failed/)
@@ -771,7 +771,7 @@ test('--glob filters files before ownership validation when fail-on-unowned is e
   const passingResult = runCli(['--fail-on-unowned', '-g', 'src/owned.js'], { cwd: repoDir })
   assert.equal(passingResult.status, 0, passingResult.stderr)
   assert.match(passingResult.stdout, /Coverage summary for globs/)
-  assert.match(passingResult.stdout, /Wrote CODEOWNERS gap report/)
+  assert.match(passingResult.stdout, /Report ready at/)
 
   const failingResult = runCli(['--fail-on-unowned', '--glob=src/*.js'], { cwd: repoDir })
   assert.equal(failingResult.status, 1)

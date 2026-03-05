@@ -162,13 +162,6 @@ async function main () {
 
       mkdirSync(path.dirname(outputAbsolutePath), { recursive: true })
       writeFileSync(outputAbsolutePath, html, 'utf8')
-
-      console.log(
-        'Wrote CODEOWNERS gap report to %s (%d analyzed files, %d unowned).',
-        outputAbsolutePath,
-        report.totals.files,
-        report.totals.unowned
-      )
     }
 
     outputUnownedReportResults(report, options)
@@ -181,6 +174,8 @@ async function main () {
         reportLocation = uploadUrl
         console.log('Uploaded report (%s): %s', UPLOAD_PROVIDER, uploadUrl)
       }
+
+      console.log('Report ready at %s', reportLocation)
 
       if (options.open) {
         const shouldOpen = await promptForReportOpen(reportLocation)
@@ -576,7 +571,7 @@ async function promptForReportOpen (target) {
     })
 
     rl.question(
-      `Report ready at ${target}\nPress Enter to open it in your browser (Ctrl+C to cancel): `,
+      'Press Enter to open it in your browser (Ctrl+C to cancel): ',
       (answer) => {
         if (answer.trim() === '') {
           settle(true)
