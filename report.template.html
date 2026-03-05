@@ -53,6 +53,29 @@
       gap: 16px;
       flex-wrap: wrap;
     }
+    .hero-header {
+      align-items: center;
+    }
+    .hero-title {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+    }
+    .report-logo-crop {
+      width: 64px;
+      height: 64px;
+      overflow: hidden;
+      border-radius: 8px;
+      flex-shrink: 0;
+    }
+    .report-logo {
+      width: 64px;
+      height: 78px;
+      object-fit: cover;
+      object-position: top center;
+      display: block;
+    }
 
     .summary-grid {
       display: grid;
@@ -291,6 +314,7 @@
     @media (max-width: 900px) {
       body { padding: 14px; }
       .header { align-items: flex-start; }
+      .hero-title { align-items: flex-start; }
       .controls input[type="text"] { min-width: 100%; }
       .controls select { min-width: 100%; }
       .team-controls {
@@ -302,10 +326,19 @@
 <body>
   <div class="container">
     <section class="panel">
-      <div class="header">
-        <div>
+      <div class="header hero-header">
+        <div class="hero-title">
+          <div class="report-logo-crop">
+            <img
+              class="report-logo"
+              src="__REPORT_LOGO_URL__"
+              alt="codeowners-audit logo"
+            />
+          </div>
+          <div>
           <h1>CODEOWNERS Gap Report</h1>
           <p id="subtitle"></p>
+          </div>
         </div>
         <div class="pill" id="generatedAt"></div>
       </div>

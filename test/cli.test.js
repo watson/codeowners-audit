@@ -191,6 +191,11 @@ test('running the bin creates a report in temp dir with expected shape', (t) => 
 
   const html = readFileSync(outputPath, 'utf8')
   assert.match(html, /<title>CODEOWNERS Gap Report<\/title>/)
+  assert.match(html, /alt="codeowners-audit logo"/, 'report header should include a logo image')
+  assert.ok(
+    html.includes('https://raw.githubusercontent.com/watson/codeowners-audit/v' + packageVersion + '/assets/logo2-small.png'),
+    'report logo should be loaded from the versioned raw GitHub asset path'
+  )
   assert.match(html, /min-width:\s*0;/, 'panels should remain width-constrained on narrow screens')
   assert.match(html, /overflow-x:\s*auto;/, 'file list areas should use horizontal scrolling for long paths')
 
