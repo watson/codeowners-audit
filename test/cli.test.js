@@ -191,16 +191,50 @@ test('running the bin creates a report in temp dir with expected shape', (t) => 
 
   const html = readFileSync(outputPath, 'utf8')
   assert.match(html, /<title>CODEOWNERS Gap Report<\/title>/)
+  assert.match(html, /min-width:\s*0;/, 'panels should remain width-constrained on narrow screens')
+  assert.match(html, /overflow-x:\s*auto;/, 'file list areas should use horizontal scrolling for long paths')
 
   const reportData = parseReportDataFromHtml(html)
   assert.equal(reportData.options.includeUntracked, false)
   assert.equal(Object.hasOwn(reportData, 'topLevel'), false)
   assert.ok(reportData.totals.files >= 3)
   assert.ok(reportData.unownedFiles.includes('src/unowned.js'))
+  assert.equal(Array.isArray(reportData.teamOwnership), true)
   assert.equal(Array.isArray(reportData.directoryTeamSuggestions), true)
   assert.equal(reportData.directoryTeamSuggestions.length, 0)
   assert.equal(reportData.directoryTeamSuggestionsMeta.enabled, false)
   assert.deepEqual(reportData.directoryTeamSuggestionsMeta.ignoredTeams, [])
+})
+
+test('report includes team ownership index for @org/team owners', (t) => {
+  const repoDir = createRepo(t, {
+    codeowners: [
+      '/src/owned.js @acme/platform @alice',
+      '/src/dual.js @acme/platform @acme/security',
+    ].join('\n') + '\n',
+    trackedFiles: {
+      'src/dual.js': 'module.exports = 3\n',
+    },
+  })
+
+  const result = runCli([], { cwd: repoDir })
+  assert.equal(result.status, 0, result.stderr)
+
+  const outputPath = parseOutputPathFromStdout(result.stdout)
+  const html = readFileSync(outputPath, 'utf8')
+  const reportData = parseReportDataFromHtml(html)
+
+  const platform = reportData.teamOwnership.find(row => row.team === '@acme/platform')
+  assert.ok(platform, 'platform team should exist')
+  assert.equal(platform.total, 2)
+  assert.deepEqual(platform.files, ['src/dual.js', 'src/owned.js'])
+
+  const security = reportData.teamOwnership.find(row => row.team === '@acme/security')
+  assert.ok(security, 'security team should exist')
+  assert.equal(security.total, 1)
+  assert.deepEqual(security.files, ['src/dual.js'])
+
+  assert.equal(reportData.teamOwnership.some(row => row.team === '@alice'), false)
 })
 
 test('team suggestions map editors to repo teams for 0% covered directories', async (t) => {

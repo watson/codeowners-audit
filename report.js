@@ -1152,6 +1152,7 @@ function compareCodeownersDescriptor (first, second) {
  *   codeownersFiles: { path: string, dir: string, rules: number }[],
  *   directories: { path: string, total: number, owned: number, unowned: number, coverage: number }[],
  *   unownedFiles: string[],
+ *   teamOwnership: { team: string, total: number, files: string[] }[],
  *   directoryTeamSuggestions: {
  *     path: string,
  *     status: string,
@@ -1178,6 +1179,8 @@ function buildReport (repoRoot, files, codeownersDescriptors, options, progress 
   const directoryStats = new Map()
   /** @type {string[]} */
   const unownedFiles = []
+  /** @type {Map<string, { team: string, files: string[] }>} */
+  const teamOwnership = new Map()
 
   let owned = 0
   let unowned = 0
@@ -1186,9 +1189,18 @@ function buildReport (repoRoot, files, codeownersDescriptors, options, progress 
     const filePath = files[fileIndex]
     const owners = resolveOwners(filePath, codeownersDescriptors)
     const isOwned = Array.isArray(owners) && owners.length > 0
+    const teamOwners = collectTeamOwners(owners)
 
     if (isOwned) {
       owned++
+      for (const team of teamOwners) {
+        const teamEntry = teamOwnership.get(team.toLowerCase())
+        if (teamEntry) {
+          teamEntry.files.push(filePath)
+        } else {
+          teamOwnership.set(team.toLowerCase(), { team, files: [filePath] })
+        }
+      }
     } else {
       unowned++
       unownedFiles.push(filePath)
@@ -1227,6 +1239,19 @@ function buildReport (repoRoot, files, codeownersDescriptors, options, progress 
 
   const directories = mapToRows(directoryStats).sort(compareRows)
   unownedFiles.sort((first, second) => first.localeCompare(second))
+  const teamOwnershipRows = Array.from(teamOwnership.values())
+    .map((entry) => {
+      entry.files.sort((first, second) => first.localeCompare(second))
+      return {
+        team: entry.team,
+        total: entry.files.length,
+        files: entry.files,
+      }
+    })
+    .sort((first, second) => {
+      if (first.total !== second.total) return second.total - first.total
+      return first.team.localeCompare(second.team)
+    })
 
   return {
     repoName: path.basename(repoRoot),
@@ -1245,6 +1270,7 @@ function buildReport (repoRoot, files, codeownersDescriptors, options, progress 
     }),
     directories,
     unownedFiles,
+    teamOwnership: teamOwnershipRows,
     directoryTeamSuggestions: [],
     directoryTeamSuggestionsMeta: {
       enabled: Boolean(options.teamSuggestions),
@@ -1256,6 +1282,35 @@ function buildReport (repoRoot, files, codeownersDescriptors, options, progress 
       warnings: [],
     },
   }
+}
+
+/**
+ * Collect unique CODEOWNERS entries that look like GitHub teams.
+ * Team owners are expected in the form "@org/slug".
+ * @param {string[]|undefined} owners
+ * @returns {string[]}
+ */
+function collectTeamOwners (owners) {
+  if (!Array.isArray(owners) || owners.length === 0) return []
+
+  /** @type {Map<string, string>} */
+  const unique = new Map()
+  for (const owner of owners) {
+    if (!looksLikeTeamOwner(owner)) continue
+    const normalized = owner.trim()
+    unique.set(normalized.toLowerCase(), normalized)
+  }
+  return Array.from(unique.values())
+}
+
+/**
+ * Determine whether a CODEOWNERS owner token is a team.
+ * @param {unknown} owner
+ * @returns {boolean}
+ */
+function looksLikeTeamOwner (owner) {
+  if (typeof owner !== 'string') return false
+  return /^@[^/\s]+\/[^/\s]+$/.test(owner.trim())
 }
 
 /**
@@ -1385,6 +1440,7 @@ function toPercent (value, total) {
  *   codeownersFiles: { path: string, dir: string, rules: number }[],
  *   directories: { path: string, total: number, owned: number, unowned: number, coverage: number }[],
  *   unownedFiles: string[],
+ *   teamOwnership: { team: string, total: number, files: string[] }[],
  *   directoryTeamSuggestions: {
  *     path: string,
  *     status: string,

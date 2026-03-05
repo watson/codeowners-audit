@@ -43,6 +43,7 @@
       border-radius: 14px;
       padding: 16px;
       box-shadow: 0 14px 30px rgba(0, 0, 0, 0.35);
+      min-width: 0;
     }
 
     .header {
@@ -153,8 +154,53 @@
       padding: 8px 10px;
       outline: none;
     }
+    .controls select {
+      min-width: 280px;
+      background: #0e1530;
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 8px 10px;
+      outline: none;
+    }
     .controls label { color: var(--muted); display: flex; gap: 8px; align-items: center; font-size: 14px; }
     .suggestion-muted { color: var(--muted); }
+    .team-controls {
+      display: grid;
+      grid-template-columns: minmax(260px, 420px) minmax(280px, 1fr);
+      gap: 12px;
+      align-items: center;
+    }
+    .team-chip-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .team-chip {
+      border: 1px solid rgba(139, 92, 246, 0.55);
+      background: rgba(139, 92, 246, 0.18);
+      color: #ddd6fe;
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .team-chip:hover {
+      background: rgba(139, 92, 246, 0.3);
+    }
+    .team-chip.is-active {
+      border-color: #c4b5fd;
+      background: rgba(196, 181, 253, 0.34);
+      color: #f5f3ff;
+    }
+    .team-empty {
+      border: 1px dashed var(--border);
+      border-radius: 10px;
+      padding: 12px;
+      margin-bottom: 10px;
+      background: rgba(0, 0, 0, 0.16);
+    }
 
     table {
       width: 100%;
@@ -222,9 +268,16 @@
       margin-top: 10px;
       margin-bottom: 6px;
     }
+    #team-file-count {
+      margin-top: 10px;
+      margin-bottom: 6px;
+    }
     .file-list {
+      width: 100%;
+      max-width: 100%;
       max-height: 380px;
-      overflow: auto;
+      overflow-x: auto;
+      overflow-y: auto;
       border: 1px solid var(--border);
       border-radius: 10px;
       background: rgba(0, 0, 0, 0.2);
@@ -239,6 +292,10 @@
       body { padding: 14px; }
       .header { align-items: flex-start; }
       .controls input[type="text"] { min-width: 100%; }
+      .controls select { min-width: 100%; }
+      .team-controls {
+        grid-template-columns: 1fr;
+      }
     }
   </style>
 </head>
@@ -306,6 +363,21 @@
 
     <section class="panel">
       <div class="header">
+        <h2>Team Ownership Explorer</h2>
+        <p class="muted">Select a team to view the files it currently owns</p>
+      </div>
+      <div class="team-empty muted" id="team-empty-state"></div>
+      <div class="controls field-controls team-controls">
+        <select id="team-select" aria-label="Select team"></select>
+        <input id="team-file-filter" type="text" placeholder="Filter selected team's owned files..." />
+      </div>
+      <div class="team-chip-list" id="team-chip-list"></div>
+      <div class="file-list" id="team-file-list"></div>
+      <p class="muted" id="team-file-count"></p>
+    </section>
+
+    <section class="panel">
+      <div class="header">
         <h2>Detected CODEOWNERS Files</h2>
       </div>
       <table>
@@ -331,6 +403,7 @@
       const clamp = value => Math.max(0, Math.min(100, value))
       const scopeQueryParam = 'scope'
       const directoryRows = report.directories.filter(row => row.path !== '(root)')
+      const teamOwnershipRows = Array.isArray(report.teamOwnership) ? report.teamOwnership : []
       const suggestionRows = Array.isArray(report.directoryTeamSuggestions) ? report.directoryTeamSuggestions : []
       const suggestionMeta = report.directoryTeamSuggestionsMeta || { enabled: false, warnings: [] }
       const suggestionByPath = new Map(suggestionRows.map((row) => [row.path, row]))
@@ -350,6 +423,7 @@
       let selectedPath = readScopeFromLocation()
       let directoryController
       let unownedController
+      let teamController
 
       function setScope (nextPath, options) {
         const historyMode = options && options.historyMode ? options.historyMode : 'push'
@@ -359,6 +433,7 @@
 
         if (directoryController) directoryController.render()
         if (unownedController) unownedController.render()
+        if (teamController) teamController.render()
 
         if (historyMode !== 'none') {
           if (historyMode === 'replace') {
@@ -389,6 +464,7 @@
         getDirectScopeStats
       )
       unownedController = setupUnownedFiles(report.unownedFiles, () => selectedPath)
+      teamController = setupTeamOwnershipExplorer(teamOwnershipRows, () => selectedPath)
       syncScopeToLocation(selectedPath, true)
 
       globalThis.addEventListener('popstate', () => {
@@ -653,6 +729,99 @@
           list.textContent = shown.join('\n') || '(none)'
           count.textContent = 'Scope: ' + (scope || '(root)') + ' — showing ' +
             fmt.format(shown.length) + ' of ' + fmt.format(filtered.length) + ' unowned files.'
+        }
+
+        return { render }
+      }
+
+      function setupTeamOwnershipExplorer (rows, getScope) {
+        const teamSelect = document.getElementById('team-select')
+        const fileFilter = document.getElementById('team-file-filter')
+        const chipList = document.getElementById('team-chip-list')
+        const list = document.getElementById('team-file-list')
+        const count = document.getElementById('team-file-count')
+        const emptyState = document.getElementById('team-empty-state')
+        const safeRows = rows
+          .filter(row => row && typeof row.team === 'string' && Array.isArray(row.files))
+          .map((row) => ({
+            team: row.team,
+            total: Number(row.total) || row.files.length,
+            files: row.files,
+          }))
+        const rowByTeam = new Map(safeRows.map(row => [row.team, row]))
+        let selectedTeam = safeRows.length > 0 ? safeRows[0].team : ''
+
+        if (safeRows.length === 0) {
+          emptyState.textContent = 'No GitHub team owners found in resolved CODEOWNERS matches. Team ownership appears when owners use @org/team.'
+          teamSelect.disabled = true
+          fileFilter.disabled = true
+          chipList.innerHTML = ''
+          list.textContent = '(none)'
+          count.textContent = 'Showing 0 files.'
+          return { render: () => {} }
+        }
+
+        emptyState.hidden = true
+        for (const row of safeRows) {
+          const option = document.createElement('option')
+          option.value = row.team
+          option.textContent = row.team + ' (' + fmt.format(row.total) + ' files)'
+          teamSelect.appendChild(option)
+        }
+
+        const quickTeams = safeRows.slice(0, 12)
+        for (const row of quickTeams) {
+          const chip = document.createElement('button')
+          chip.type = 'button'
+          chip.className = 'team-chip'
+          chip.textContent = row.team + ' (' + fmt.format(row.total) + ')'
+          chip.setAttribute('data-team', row.team)
+          chip.addEventListener('click', () => {
+            selectedTeam = row.team
+            teamSelect.value = selectedTeam
+            render()
+          })
+          chipList.appendChild(chip)
+        }
+
+        teamSelect.addEventListener('change', () => {
+          selectedTeam = teamSelect.value
+          render()
+        })
+        fileFilter.addEventListener('input', render)
+        render()
+
+        function render () {
+          const scope = getScope()
+          const query = fileFilter.value.trim().toLowerCase()
+          const selectedRow = rowByTeam.get(selectedTeam) || safeRows[0]
+          if (!selectedRow) {
+            list.textContent = '(none)'
+            count.textContent = 'Showing 0 files.'
+            return
+          }
+
+          if (teamSelect.value !== selectedRow.team) {
+            teamSelect.value = selectedRow.team
+          }
+          selectedTeam = selectedRow.team
+          const scopedFiles = scope
+            ? selectedRow.files.filter(file => file === scope || file.startsWith(scope + '/'))
+            : selectedRow.files
+          const filteredFiles = query
+            ? scopedFiles.filter(file => file.toLowerCase().includes(query))
+            : scopedFiles
+          const shown = filteredFiles.slice(0, 6000)
+
+          list.textContent = shown.join('\n') || '(none)'
+          count.textContent = 'Team: ' + selectedRow.team + ' — scope: ' + (scope || '(root)') +
+            ' — showing ' + fmt.format(shown.length) + ' of ' + fmt.format(filteredFiles.length) + ' files.'
+
+          const chips = chipList.querySelectorAll('.team-chip')
+          for (const chip of chips) {
+            const isActive = chip.getAttribute('data-team') === selectedRow.team
+            chip.classList.toggle('is-active', isActive)
+          }
         }
 
         return { render }

@@ -25,6 +25,7 @@ See how ownership coverage looks in practice with [this interactive report](http
 - Top-level hotspot view to prioritize high-impact gaps
 - Directory explorer with filtering, sorting, and drill-down
 - Full unowned file list with scope and text filtering
+- Team ownership explorer with quick team chips and owned-file filtering
 - Supports multiple `CODEOWNERS` files in nested directories
 - Optional upload to [zenbin.org](https://zenbin.org) for easy sharing
 
@@ -202,6 +203,7 @@ The generated page includes:
 - top-level hotspots for missing ownership
 - scoped directory table with coverage bars
 - searchable list of unowned files
+- team ownership explorer for filtering files by `@org/team`
 - detected `CODEOWNERS` files and rule counts
 
 The report is self-contained, so it can be opened directly from disk or shared after upload.
