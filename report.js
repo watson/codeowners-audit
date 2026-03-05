@@ -209,27 +209,15 @@ function parseArgs (args) {
       continue
     }
 
-    if (arg === '--working-dir' || arg === '--cwd' || arg === '-C') {
+    if (arg === '--cwd') {
       workingDir = args[index + 1]
       workingDirSetExplicitly = true
       index++
       continue
     }
 
-    if (arg.startsWith('--working-dir=')) {
-      workingDir = arg.slice('--working-dir='.length)
-      workingDirSetExplicitly = true
-      continue
-    }
-
     if (arg.startsWith('--cwd=')) {
       workingDir = arg.slice('--cwd='.length)
-      workingDirSetExplicitly = true
-      continue
-    }
-
-    if (arg.startsWith('-C=')) {
-      workingDir = arg.slice('-C='.length)
       workingDirSetExplicitly = true
       continue
     }
@@ -374,7 +362,7 @@ function parseArgs (args) {
   }
 
   if (!help && workingDirSetExplicitly && !workingDir) {
-    throw new Error('Missing value for --working-dir.')
+    throw new Error('Missing value for --cwd.')
   }
 
   if (!help && teamSuggestionsWindowDays < 1) {
@@ -436,10 +424,11 @@ function parseArgs (args) {
  * @returns {void}
  */
 function printUsage () {
+  /** @type {Array<[string, string]>} */
   const optionRows = [
     ['-o, --output <path>', 'Output HTML file path (default: ' + DEFAULT_OUTPUT_PATH + ')'],
     ['--output-dir <dir>', 'Output directory for the generated HTML report'],
-    ['-C, --working-dir <dir>', 'Run git commands from this directory (alias: --cwd)'],
+    ['--cwd <dir>', 'Run git commands from this directory'],
     ['--include-untracked', 'Include untracked files in the analysis'],
     ['--ci', 'CI ownership check mode (no report; exits non-zero on uncovered files)'],
     ['-g, --glob <pattern>', 'Repeatable file filter for report/check scope (default: **)'],

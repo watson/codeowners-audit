@@ -65,7 +65,7 @@ For CI checks where you do not want an HTML report, use `--ci`.
 | --- | --- |
 | `-o, --output <path>` | Output HTML file path |
 | `--output-dir <dir>` | Output directory for the generated report |
-| `-C, --working-dir <dir>` | Resolve git operations from this directory (alias: `--cwd`) |
+| `--cwd <dir>` | Resolve git operations from this directory |
 | `--include-untracked` | Include untracked (non-ignored) files in analysis |
 | `--ci` | CI check mode. No report is generated; exits non-zero if uncovered files are found |
 | `-g, --glob <pattern>` | Repeatable file filter for report/check scope. Defaults to all files via `**` when omitted |
@@ -97,7 +97,7 @@ codeowners-audit --output codeowners-gaps-report.html --no-open
 Run against a repository from another directory:
 
 ```bash
-codeowners-audit --working-dir ~/code/my-repo
+codeowners-audit --cwd ~/code/my-repo
 ```
 
 ## Using in CI

@@ -424,7 +424,7 @@ test('output directory option writes to the requested directory', (t) => {
   }
 })
 
-test('working directory option allows running outside repository cwd', (t) => {
+test('--cwd allows running outside repository cwd', (t) => {
   const repoDir = createRepo(t)
   const outsideDir = mkdtempSync(path.join(tmpdir(), 'codeowners-audit-external-cwd-'))
   t.after(() => {
@@ -432,15 +432,9 @@ test('working directory option allows running outside repository cwd', (t) => {
   })
 
   {
-    const result = runCli(['--working-dir', repoDir, '--output', 'reports/from-working-dir.html'], { cwd: outsideDir })
+    const result = runCli(['--cwd', repoDir, '--output', 'reports/from-working-dir.html'], { cwd: outsideDir })
     assert.equal(result.status, 0, result.stderr)
     assert.ok(existsSync(path.join(repoDir, 'reports', 'from-working-dir.html')))
-  }
-
-  {
-    const result = runCli(['-C=' + repoDir, '--output', 'reports/from-short-alias.html'], { cwd: outsideDir })
-    assert.equal(result.status, 0, result.stderr)
-    assert.ok(existsSync(path.join(repoDir, 'reports', 'from-short-alias.html')))
   }
 })
 
@@ -640,7 +634,7 @@ test('--help prints usage without failing', (t) => {
   assert.match(result.stdout, /Usage: codeowners-audit \[options\]/)
   assert.match(result.stdout, /--include-untracked/)
   assert.match(result.stdout, /--output-dir/)
-  assert.match(result.stdout, /--working-dir/)
+  assert.match(result.stdout, /--cwd/)
   assert.match(result.stdout, /--no-open/)
   assert.match(result.stdout, /--ci/)
   assert.match(result.stdout, /--glob/)
@@ -852,9 +846,9 @@ test('unknown and invalid options fail with a useful error', (t) => {
   assert.equal(missingOutputDirResult.status, 2)
   assert.match(missingOutputDirResult.stderr, /Missing value for --output-dir/)
 
-  const missingWorkingDirResult = runCli(['--working-dir'], { cwd: repoDir })
+  const missingWorkingDirResult = runCli(['--cwd'], { cwd: repoDir })
   assert.equal(missingWorkingDirResult.status, 2)
-  assert.match(missingWorkingDirResult.stderr, /Missing value for --working-dir/)
+  assert.match(missingWorkingDirResult.stderr, /Missing value for --cwd/)
 
   const removedCheckResult = runCli(['--check='], { cwd: repoDir })
   assert.equal(removedCheckResult.status, 2)
