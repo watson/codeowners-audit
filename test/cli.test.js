@@ -177,6 +177,22 @@ function getOpenCommandName () {
   return 'xdg-open'
 }
 
+function writeFakeNodeScript (scriptPath, scriptLines) {
+  if (process.platform === 'win32') {
+    const cmdPath = scriptPath.endsWith('.cmd') ? scriptPath : scriptPath + '.cmd'
+    const jsPath = scriptPath + '.js'
+    writeFileSync(jsPath, scriptLines.join('\n'), 'utf8')
+    writeFileSync(cmdPath, `@node "%~dp0${path.basename(jsPath)}" %*\r\n`, 'utf8')
+  } else {
+    writeFileSync(
+      scriptPath,
+      ['#!/usr/bin/env node', ...scriptLines, ''].join('\n'),
+      'utf8'
+    )
+    chmodSync(scriptPath, 0o755)
+  }
+}
+
 test('running the bin creates a report in temp dir with expected shape', (t) => {
   const repoDir = createRepo(t)
 
@@ -939,17 +955,10 @@ test('opens local report in browser after Enter confirmation', (t) => {
   const fakeOpenPath = path.join(fakeBinDir, openerCommand)
   const openLogPath = path.join(repoDir, 'fake-open-target.txt')
   mkdirSync(fakeBinDir, { recursive: true })
-  writeFileSync(
-    fakeOpenPath,
-    [
-      '#!/usr/bin/env node',
-      'const fs = require("node:fs")',
-      `fs.writeFileSync(${JSON.stringify(openLogPath)}, process.argv.slice(2).join("\\n"), "utf8")`,
-      '',
-    ].join('\n'),
-    'utf8'
-  )
-  chmodSync(fakeOpenPath, 0o755)
+  writeFakeNodeScript(fakeOpenPath, [
+    'const fs = require("node:fs")',
+    `fs.writeFileSync(${JSON.stringify(openLogPath)}, process.argv.slice(2).join("\\n"), "utf8")`,
+  ])
 
   const result = runCli([], {
     cwd: repoDir,
@@ -979,17 +988,10 @@ test('does not open local report when open confirmation is declined', (t) => {
   const fakeOpenPath = path.join(fakeBinDir, openerCommand)
   const openLogPath = path.join(repoDir, 'fake-open-target.txt')
   mkdirSync(fakeBinDir, { recursive: true })
-  writeFileSync(
-    fakeOpenPath,
-    [
-      '#!/usr/bin/env node',
-      'const fs = require("node:fs")',
-      `fs.writeFileSync(${JSON.stringify(openLogPath)}, process.argv.slice(2).join("\\n"), "utf8")`,
-      '',
-    ].join('\n'),
-    'utf8'
-  )
-  chmodSync(fakeOpenPath, 0o755)
+  writeFakeNodeScript(fakeOpenPath, [
+    'const fs = require("node:fs")',
+    `fs.writeFileSync(${JSON.stringify(openLogPath)}, process.argv.slice(2).join("\\n"), "utf8")`,
+  ])
 
   const result = runCli([], {
     cwd: repoDir,
@@ -1012,19 +1014,12 @@ test('--upload uses curl response URL in output', (t) => {
   const fakeCurlPath = path.join(fakeBinDir, 'curl')
   const uploadLogPath = path.join(repoDir, 'fake-upload-payload.txt')
   mkdirSync(fakeBinDir, { recursive: true })
-  writeFileSync(
-    fakeCurlPath,
-    [
-      '#!/usr/bin/env node',
-      'const fs = require("node:fs")',
-      'const payload = fs.readFileSync(0, "utf8")',
-      `fs.writeFileSync(${JSON.stringify(uploadLogPath)}, payload, "utf8")`,
-      'process.stdout.write(JSON.stringify({ url: "https://zenbin.org/p/test-page" }))',
-      '',
-    ].join('\n'),
-    'utf8'
-  )
-  chmodSync(fakeCurlPath, 0o755)
+  writeFakeNodeScript(fakeCurlPath, [
+    'const fs = require("node:fs")',
+    'const payload = fs.readFileSync(0, "utf8")',
+    `fs.writeFileSync(${JSON.stringify(uploadLogPath)}, payload, "utf8")`,
+    'process.stdout.write(JSON.stringify({ url: "https://zenbin.org/p/test-page" }))',
+  ])
 
   const result = runCli(['--upload'], {
     cwd: repoDir,
@@ -1053,30 +1048,16 @@ test('--upload opens uploaded URL in browser after Enter confirmation', (t) => {
   const uploadLogPath = path.join(repoDir, 'fake-upload-payload.txt')
   const openLogPath = path.join(repoDir, 'fake-open-target.txt')
   mkdirSync(fakeBinDir, { recursive: true })
-  writeFileSync(
-    fakeCurlPath,
-    [
-      '#!/usr/bin/env node',
-      'const fs = require("node:fs")',
-      'const payload = fs.readFileSync(0, "utf8")',
-      `fs.writeFileSync(${JSON.stringify(uploadLogPath)}, payload, "utf8")`,
-      'process.stdout.write(JSON.stringify({ url: "https://zenbin.org/p/test-upload-open" }))',
-      '',
-    ].join('\n'),
-    'utf8'
-  )
-  writeFileSync(
-    fakeOpenPath,
-    [
-      '#!/usr/bin/env node',
-      'const fs = require("node:fs")',
-      `fs.writeFileSync(${JSON.stringify(openLogPath)}, process.argv.slice(2).join("\\n"), "utf8")`,
-      '',
-    ].join('\n'),
-    'utf8'
-  )
-  chmodSync(fakeCurlPath, 0o755)
-  chmodSync(fakeOpenPath, 0o755)
+  writeFakeNodeScript(fakeCurlPath, [
+    'const fs = require("node:fs")',
+    'const payload = fs.readFileSync(0, "utf8")',
+    `fs.writeFileSync(${JSON.stringify(uploadLogPath)}, payload, "utf8")`,
+    'process.stdout.write(JSON.stringify({ url: "https://zenbin.org/p/test-upload-open" }))',
+  ])
+  writeFakeNodeScript(fakeOpenPath, [
+    'const fs = require("node:fs")',
+    `fs.writeFileSync(${JSON.stringify(openLogPath)}, process.argv.slice(2).join("\\n"), "utf8")`,
+  ])
 
   const result = runCli(['--upload'], {
     cwd: repoDir,
@@ -1100,19 +1081,12 @@ test('--upload fails with a clear message when the report is too large', (t) => 
   const fakeCurlPath = path.join(fakeBinDir, 'curl')
   const uploadLogPath = path.join(repoDir, 'fake-upload-payload.txt')
   mkdirSync(fakeBinDir, { recursive: true })
-  writeFileSync(
-    fakeCurlPath,
-    [
-      '#!/usr/bin/env node',
-      'const fs = require("node:fs")',
-      'const payload = fs.readFileSync(0, "utf8")',
-      `fs.writeFileSync(${JSON.stringify(uploadLogPath)}, payload, "utf8")`,
-      'process.stdout.write(JSON.stringify({ url: "https://zenbin.org/p/should-not-run" }))',
-      '',
-    ].join('\n'),
-    'utf8'
-  )
-  chmodSync(fakeCurlPath, 0o755)
+  writeFakeNodeScript(fakeCurlPath, [
+    'const fs = require("node:fs")',
+    'const payload = fs.readFileSync(0, "utf8")',
+    `fs.writeFileSync(${JSON.stringify(uploadLogPath)}, payload, "utf8")`,
+    'process.stdout.write(JSON.stringify({ url: "https://zenbin.org/p/should-not-run" }))',
+  ])
 
   addTrackedBulkFilesForStress(repoDir, ZENBIN_UPLOAD_STRESS_TARGET_BYTES)
 
