@@ -199,8 +199,8 @@ The report follows practical `CODEOWNERS` resolution behavior:
 
 ## Requirements
 
-- Git CLI available on `PATH`
-- `curl` available on `PATH` when using `--upload`
+- `git` available on `PATH`
+- `curl` available on `PATH` (only if using `--upload`)
 
 ## Upload size note
 
