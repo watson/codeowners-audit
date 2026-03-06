@@ -268,6 +268,25 @@
       color: #67e8f9;
       font-weight: 600;
     }
+    .warning-history {
+      margin-left: 8px;
+      white-space: nowrap;
+    }
+    .warning-history-link,
+    .warning-history-text {
+      color: #c4b5fd;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .warning-history-link {
+      text-decoration: underline;
+      text-decoration-color: rgba(196, 181, 253, 0.45);
+      text-underline-offset: 2px;
+    }
+    .warning-history-link:hover {
+      color: #ddd6fe;
+      text-decoration-color: rgba(221, 214, 254, 0.7);
+    }
 
     table {
       width: 100%;
@@ -515,6 +534,9 @@
       const fmt = new Intl.NumberFormat('en-US')
       const percent = value => Number(value).toFixed(1) + '%'
       const clamp = value => Math.max(0, Math.min(100, value))
+      const reportGeneratedAtMs = Number.isFinite(Date.parse(report.generatedAt))
+        ? Date.parse(report.generatedAt)
+        : Date.now()
       const scopeQueryParam = 'scope'
       const directoryRows = report.directories.filter(row => row.path !== '(root)')
       const teamOwnershipRows = Array.isArray(report.teamOwnership) ? report.teamOwnership : []
@@ -642,10 +664,28 @@
           appendCodeownersOwnerList(ownersSpan, warning.owners)
           item.appendChild(ownersSpan)
 
+          appendMissingPathWarningHistory(item, warning)
           list.appendChild(item)
         }
 
         container.hidden = false
+      }
+
+      function appendMissingPathWarningHistory (target, warning) {
+        const history = warning && typeof warning.history === 'object' ? warning.history : null
+        if (!history || typeof history.addedAt !== 'string') {
+          return
+        }
+
+        const ageLabel = formatRelativeAge(history.addedAt)
+        const historyNode = history.commitUrl
+          ? createHistoryLinkNode(ageLabel, history)
+          : createHistoryTextNode(ageLabel, history)
+        const wrapper = document.createElement('span')
+        wrapper.className = 'warning-history'
+        wrapper.appendChild(document.createTextNode(' \u00b7 '))
+        wrapper.appendChild(historyNode)
+        target.appendChild(wrapper)
       }
 
       function appendCodeownersOwnerList (target, owners) {
@@ -697,6 +737,56 @@
         }
 
         return ''
+      }
+
+      function createHistoryLinkNode (ageLabel, history) {
+        const link = document.createElement('a')
+        link.className = 'warning-history-link'
+        link.href = history.commitUrl
+        link.target = '_blank'
+        link.rel = 'noopener noreferrer'
+        link.textContent = ageLabel
+        link.title = buildHistoryTitle(history)
+        return link
+      }
+
+      function createHistoryTextNode (ageLabel, history) {
+        const label = document.createElement('span')
+        label.className = 'warning-history-text'
+        label.textContent = ageLabel
+        label.title = buildHistoryTitle(history)
+        return label
+      }
+
+      function buildHistoryTitle (history) {
+        const addedAt = Number.isFinite(Date.parse(history.addedAt))
+          ? new Date(history.addedAt).toLocaleString()
+          : history.addedAt
+        const shortSha = typeof history.commitSha === 'string' && history.commitSha
+          ? ' (' + history.commitSha.slice(0, 7) + ')'
+          : ''
+        return 'Added ' + addedAt + shortSha
+      }
+
+      function formatRelativeAge (value) {
+        const timestamp = Date.parse(value)
+        if (!Number.isFinite(timestamp)) return 'history'
+
+        const elapsedMs = Math.max(0, reportGeneratedAtMs - timestamp)
+        const minuteMs = 60 * 1000
+        const hourMs = 60 * minuteMs
+        const dayMs = 24 * hourMs
+        const weekMs = 7 * dayMs
+        const monthMs = 30 * dayMs
+        const yearMs = 365 * dayMs
+
+        if (elapsedMs >= yearMs) return Math.floor(elapsedMs / yearMs) + 'y ago'
+        if (elapsedMs >= monthMs) return Math.floor(elapsedMs / monthMs) + 'mo ago'
+        if (elapsedMs >= weekMs) return Math.floor(elapsedMs / weekMs) + 'w ago'
+        if (elapsedMs >= dayMs) return Math.floor(elapsedMs / dayMs) + 'd ago'
+        if (elapsedMs >= hourMs) return Math.floor(elapsedMs / hourMs) + 'h ago'
+        if (elapsedMs >= minuteMs) return Math.floor(elapsedMs / minuteMs) + 'm ago'
+        return 'just now'
       }
 
       function renderCodeownersDiscoveryWarnings (validationMeta) {

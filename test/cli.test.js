@@ -699,6 +699,9 @@ test('report includes missing CODEOWNERS path warnings in validation metadata', 
   assert.match(html, /ownersSpan\.className = 'warning-owners'/)
   assert.match(html, /ownerLabelSpan\.textContent = ' owners: '/)
   assert.match(html, /appendCodeownersOwnerList\(ownersSpan, warning\.owners\)/)
+  assert.match(html, /appendMissingPathWarningHistory\(item, warning\)/)
+  assert.match(html, /className = 'warning-history-link'/)
+  assert.match(html, /function formatRelativeAge \(value\)/)
   assert.match(html, /return 'https:\/\/github\.com\/orgs\/' \+ encodeURIComponent\(segments\[0\]\) \+/)
   assert.match(html, /return 'https:\/\/github\.com\/' \+ encodeURIComponent\(segments\[0\]\)/)
   assert.doesNotMatch(html, /textSpan\.textContent = ' \(from '/)
@@ -717,6 +720,54 @@ test('report includes missing CODEOWNERS path warnings in validation metadata', 
     false
   )
   assert.doesNotMatch(result.stderr, /CODEOWNERS pattern\(s\) do not match any repository files/)
+})
+
+test('missing CODEOWNERS path history links to the commit that first added the pattern', (t) => {
+  const repoDir = createRepo(t, {
+    remoteUrl: 'git@github.com:test-org/test-repo.git',
+    codeowners: [
+      '/src/owned.js @team',
+      '/src/unowned.js @team',
+      '/does-not-exist.js @acme/platform',
+    ].join('\n') + '\n',
+  })
+
+  commitStaged(repoDir, 'add missing pattern', 30, 'Alice', 'alice@example.com')
+  const initialCommitSha = execFileSync('git', ['rev-parse', 'HEAD'], {
+    cwd: repoDir,
+    encoding: 'utf8',
+  }).trim()
+
+  writeFileSync(
+    path.join(repoDir, 'CODEOWNERS'),
+    [
+      '/src/owned.js @team',
+      '/src/unowned.js @team',
+      '/does-not-exist.js @acme/platform @alice',
+    ].join('\n') + '\n',
+    'utf8'
+  )
+  runGit(repoDir, ['add', 'CODEOWNERS'])
+  commitStaged(repoDir, 'update missing pattern owners', 10, 'Bob', 'bob@example.com')
+
+  const result = runCli(['--output', 'missing-path-history.html'], { cwd: repoDir })
+
+  assert.equal(result.status, 0, result.stderr)
+  const html = readFileSync(path.join(repoDir, 'missing-path-history.html'), 'utf8')
+  assert.match(html, /className = 'warning-history-link'/)
+  const reportData = parseReportDataFromHtml(html)
+  const warning = reportData.codeownersValidationMeta.missingPathWarnings.find(
+    row => row.pattern === '/does-not-exist.js'
+  )
+  assert.ok(warning, 'missing path warning should be present')
+  assert.deepEqual(warning.owners, ['@acme/platform', '@alice'])
+  assert.ok(warning.history, 'missing path warning should include history metadata')
+  assert.equal(warning.history.commitSha, initialCommitSha)
+  assert.equal(
+    warning.history.commitUrl,
+    `https://github.com/test-org/test-repo/commit/${initialCommitSha}`
+  )
+  assert.match(warning.history.addedAt, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.000Z$/)
 })
 
 test('--no-report prints missing CODEOWNERS path warnings to stderr', (t) => {

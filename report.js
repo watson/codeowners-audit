@@ -134,7 +134,17 @@ async function main () {
 
     const codeownersDescriptor = loadCodeownersDescriptor(repoRoot, codeownersPath)
     const discoveryWarnings = collectCodeownersDiscoveryWarnings(discoveredCodeownersPaths, codeownersPath)
-    const missingPathWarnings = collectMissingCodeownersPathWarnings(codeownersDescriptor, allRepoFiles)
+    const repoWebUrl = resolveRepoWebUrl(repoRoot)
+    const missingPathHistoryByPattern = collectCodeownersPatternHistory(
+      repoRoot,
+      codeownersDescriptor,
+      repoWebUrl
+    )
+    const missingPathWarnings = collectMissingCodeownersPathWarnings(
+      codeownersDescriptor,
+      allRepoFiles,
+      missingPathHistoryByPattern
+    )
 
     const scopeFilteredFiles = filterFilesByCliGlobs(allRepoFiles, options.checkGlobs)
 
@@ -707,6 +717,22 @@ function resolveRepoDisplayName (repoRoot) {
 }
 
 /**
+ * Resolve a browsable repository URL from the origin remote when possible.
+ * Returns null for repositories without an origin remote or file-based remotes.
+ * @param {string} repoRoot
+ * @returns {string|null}
+ */
+function resolveRepoWebUrl (repoRoot) {
+  try {
+    const remoteUrl = runGitCommand(['remote', 'get-url', 'origin'], repoRoot).trim()
+    if (remoteUrl) {
+      return deriveRepoWebUrlFromRemoteUrl(remoteUrl)
+    }
+  } catch {}
+  return null
+}
+
+/**
  * Derive a human-friendly repository name from a remote URL.
  * For GitHub/GitLab-style URLs, returns "owner/repo".
  * Falls back to the URL itself for unrecognised formats.
@@ -732,6 +758,30 @@ function deriveDisplayNameFromUrl (url) {
   } catch {}
 
   return url
+}
+
+/**
+ * Derive a browsable repository URL from a common git remote URL.
+ * Supports git@host:owner/repo.git and http(s)://host/owner/repo(.git) forms.
+ * @param {string} remoteUrl
+ * @returns {string|null}
+ */
+function deriveRepoWebUrlFromRemoteUrl (remoteUrl) {
+  const sshMatch = remoteUrl.match(/^git@([^:]+):([^/]+)\/(.+?)(?:\.git)?$/)
+  if (sshMatch) {
+    return `https://${sshMatch[1]}/${sshMatch[2]}/${sshMatch[3]}`
+  }
+
+  try {
+    const parsed = new URL(remoteUrl)
+    if (parsed.protocol === 'file:') return null
+    const segments = parsed.pathname.replaceAll(/^\/+|\/+$/g, '').split('/')
+    if (segments.length >= 2) {
+      return `${parsed.protocol}//${parsed.host}/${segments[0]}/${segments[1].replace(/\.git$/i, '')}`
+    }
+  } catch {}
+
+  return null
 }
 
 /**
@@ -956,7 +1006,12 @@ function openReportInBrowser (target) {
  *     missingPathWarnings?: {
  *       codeownersPath: string,
  *       pattern: string,
- *       owners: string[]
+ *       owners: string[],
+ *       history?: {
+ *         addedAt: string,
+ *         commitSha: string,
+ *         commitUrl?: string
+ *       }
  *     }[]
  *   }
  * }} report
@@ -1269,7 +1324,12 @@ function formatCodeownersDiscoveryWarningForCli (warning, useColor) {
  * @param {{
  *   codeownersPath: string,
  *   pattern: string,
- *   owners: string[]
+ *   owners: string[],
+ *   history?: {
+ *     addedAt: string,
+ *     commitSha: string,
+ *     commitUrl?: string
+ *   }
  * }} warning
  * @param {boolean} useColor
  * @returns {string}
@@ -1395,25 +1455,38 @@ function parseCodeowners (fileContent) {
   const rules = []
 
   for (const line of lines) {
-    const withoutComment = stripInlineComment(line).trim()
-    if (!withoutComment) continue
-
-    const tokens = tokenizeCodeownersLine(withoutComment).map(unescapeToken)
-    if (tokens.length < 2) continue
-
-    const pattern = tokens[0]
-    const owners = tokens.slice(1).filter(Boolean)
-    if (!owners.length) continue
-    if (pattern.startsWith('!')) continue // Negation is not supported in CODEOWNERS.
+    const parsedRule = parseCodeownersRuleLine(line)
+    if (!parsedRule) continue
 
     rules.push({
-      pattern,
-      owners,
-      matches: createPatternMatcher(pattern, { includeDescendants: true }),
+      pattern: parsedRule.pattern,
+      owners: parsedRule.owners,
+      matches: createPatternMatcher(parsedRule.pattern, { includeDescendants: true }),
     })
   }
 
   return rules
+}
+
+/**
+ * Parse a single CODEOWNERS rule line, ignoring blank lines, comments,
+ * malformed rows, and unsupported negation patterns.
+ * @param {string} line
+ * @returns {{ pattern: string, owners: string[] }|null}
+ */
+function parseCodeownersRuleLine (line) {
+  const withoutComment = stripInlineComment(line).trim()
+  if (!withoutComment) return null
+
+  const tokens = tokenizeCodeownersLine(withoutComment).map(unescapeToken)
+  if (tokens.length < 2) return null
+
+  const pattern = tokens[0]
+  const owners = tokens.slice(1).filter(Boolean)
+  if (!owners.length) return null
+  if (pattern.startsWith('!')) return null // Negation is not supported in CODEOWNERS.
+
+  return { pattern, owners }
 }
 
 /**
@@ -1531,28 +1604,48 @@ function escapeRegexChar (char) {
  *   }[]
  * }} codeownersDescriptor
  * @param {string[]} repoFiles
+ * @param {Map<string, {
+ *   addedAt: string,
+ *   commitSha: string,
+ *   commitUrl?: string
+ * }>} [historyByPattern]
  * @returns {{
  *   codeownersPath: string,
  *   pattern: string,
- *   owners: string[]
+ *   owners: string[],
+ *   history?: {
+ *     addedAt: string,
+ *     commitSha: string,
+ *     commitUrl?: string
+ *   }
  * }[]}
  */
-function collectMissingCodeownersPathWarnings (codeownersDescriptor, repoFiles) {
+function collectMissingCodeownersPathWarnings (codeownersDescriptor, repoFiles, historyByPattern = new Map()) {
   /** @type {{
    *   codeownersPath: string,
    *   pattern: string,
-   *   owners: string[]
+   *   owners: string[],
+   *   history?: {
+   *     addedAt: string,
+   *     commitSha: string,
+   *     commitUrl?: string
+   *   }
    * }[]} */
   const warnings = []
 
   for (const rule of codeownersDescriptor.rules) {
     const hasMatch = repoFiles.some((filePath) => rule.matches(filePath))
     if (!hasMatch) {
-      warnings.push({
+      const warning = {
         codeownersPath: codeownersDescriptor.path,
         pattern: rule.pattern,
         owners: rule.owners,
-      })
+      }
+      const history = historyByPattern.get(rule.pattern)
+      if (history) {
+        warning.history = history
+      }
+      warnings.push(warning)
     }
   }
 
@@ -1562,6 +1655,124 @@ function collectMissingCodeownersPathWarnings (codeownersDescriptor, repoFiles) 
     return first.pattern.localeCompare(second.pattern)
   })
   return warnings
+}
+
+/**
+ * Replay CODEOWNERS file history to determine when each current pattern first
+ * appeared in its current continuous lifetime.
+ * @param {string} repoRoot
+ * @param {{
+ *   path: string,
+ *   rules: {
+ *     pattern: string,
+ *     owners: string[],
+ *     matches: (repoPath: string) => boolean
+ *   }[]
+ * }} codeownersDescriptor
+ * @param {string|null} repoWebUrl
+ * @returns {Map<string, {
+ *   addedAt: string,
+ *   commitSha: string,
+ *   commitUrl?: string
+ * }>}
+ */
+function collectCodeownersPatternHistory (repoRoot, codeownersDescriptor, repoWebUrl) {
+  const currentPatterns = new Set(codeownersDescriptor.rules.map(rule => rule.pattern))
+  /** @type {Map<string, {
+   *   addedAt: string,
+   *   commitSha: string,
+   *   commitUrl?: string
+   * }>} */
+  const activeHistory = new Map()
+
+  if (currentPatterns.size === 0) {
+    return activeHistory
+  }
+
+  /** @type {string} */
+  let stdout
+  try {
+    stdout = runGitCommand(
+      ['log', '--reverse', '--format=%x1e%H%x00%ct', '-p', '--unified=0', '--no-ext-diff', '--', codeownersDescriptor.path],
+      repoRoot
+    )
+  } catch {
+    return activeHistory
+  }
+
+  for (const entry of stdout.split('\u001e')) {
+    if (!entry) continue
+    const normalizedEntry = entry.replace(/^\n+/, '')
+    if (!normalizedEntry) continue
+
+    const firstNewlineIndex = normalizedEntry.indexOf('\n')
+    const metadataLine = firstNewlineIndex === -1
+      ? normalizedEntry
+      : normalizedEntry.slice(0, firstNewlineIndex)
+    const patch = firstNewlineIndex === -1
+      ? ''
+      : normalizedEntry.slice(firstNewlineIndex + 1)
+    const [commitSha, commitTimestamp] = metadataLine.split('\u0000')
+    const commitSeconds = Number.parseInt(commitTimestamp, 10)
+    if (!commitSha || !Number.isFinite(commitSeconds)) continue
+
+    const commitInfo = {
+      addedAt: new Date(commitSeconds * 1000).toISOString(),
+      commitSha,
+      ...(repoWebUrl ? { commitUrl: `${repoWebUrl}/commit/${encodeURIComponent(commitSha)}` } : {}),
+    }
+    const changeSet = collectCodeownersPatternDiffChangeSet(patch)
+
+    for (const pattern of changeSet.deleted) {
+      if (!changeSet.added.has(pattern)) {
+        activeHistory.delete(pattern)
+      }
+    }
+    for (const pattern of changeSet.added) {
+      if (!activeHistory.has(pattern)) {
+        activeHistory.set(pattern, commitInfo)
+      }
+    }
+  }
+
+  const historyByPattern = new Map()
+  for (const pattern of currentPatterns) {
+    const history = activeHistory.get(pattern)
+    if (history) {
+      historyByPattern.set(pattern, history)
+    }
+  }
+  return historyByPattern
+}
+
+/**
+ * Collect added and deleted CODEOWNERS patterns from a unified diff.
+ * Pattern-level tracking preserves age across owner-only edits to the same path.
+ * @param {string} patch
+ * @returns {{ added: Set<string>, deleted: Set<string> }}
+ */
+function collectCodeownersPatternDiffChangeSet (patch) {
+  /** @type {Set<string>} */
+  const added = new Set()
+  /** @type {Set<string>} */
+  const deleted = new Set()
+
+  for (const line of patch.split('\n')) {
+    if (!line) continue
+    if (line.startsWith('+++') || line.startsWith('---')) continue
+    if (line[0] !== '+' && line[0] !== '-') continue
+
+    const parsedRule = parseCodeownersRuleLine(line.slice(1))
+    if (!parsedRule) continue
+
+    if (line[0] === '+') {
+      added.add(parsedRule.pattern)
+    } else {
+      deleted.add(parsedRule.pattern)
+    }
+  }
+
+  return { added, deleted }
 }
 
 /**
@@ -1648,7 +1859,12 @@ function collectCodeownersDiscoveryWarnings (discoveredCodeownersPaths, activeCo
  *     missingPathWarnings: {
  *       codeownersPath: string,
  *       pattern: string,
- *       owners: string[]
+ *       owners: string[],
+ *       history?: {
+ *         addedAt: string,
+ *         commitSha: string,
+ *         commitUrl?: string
+ *       }
  *     }[],
  *     missingPathWarningCount: number
  *   },
@@ -1927,7 +2143,12 @@ function toPercent (value, total) {
  *     missingPathWarnings: {
  *       codeownersPath: string,
  *       pattern: string,
- *       owners: string[]
+ *       owners: string[],
+ *       history?: {
+ *         addedAt: string,
+ *         commitSha: string,
+ *         commitUrl?: string
+ *       }
  *     }[],
  *     missingPathWarningCount: number
  *   },
