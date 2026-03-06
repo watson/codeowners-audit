@@ -7,7 +7,7 @@ alwaysApply: true
 
 - Use conventional commits for every repository commit: `feat`, `fix`, `perf`, `docs`, `test`, `ci`, `refactor`, `build`, or `chore`.
 - Keep the subject concise and descriptive. Use a scope when it clarifies the change, for example `ci(commitlint): ...`.
-- If a body is needed, wrap each body line to 100 characters or less to satisfy this repository's `commitlint` rules.
+- If a body is needed, wrap each body line to 100 characters or less.
 - Prefer a one-line commit message when a body adds little value.
 - Use `npm run lint:commit` to validate the latest commit locally, or pipe a draft message into
   `npm run lint:commit:message` before committing.
