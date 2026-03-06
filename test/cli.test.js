@@ -21,6 +21,10 @@ function parseOutputPathFromStdout (stdout) {
   return match[1].trim()
 }
 
+function stripAnsi (value) {
+  return String(value).replaceAll(/\u001b\[[0-9;]*m/g, '')
+}
+
 function buildCliEnv (options = {}) {
   return {
     ...process.env,
@@ -702,6 +706,8 @@ test('report includes missing CODEOWNERS path warnings in validation metadata', 
   assert.match(html, /appendMissingPathWarningHistory\(item, warning\)/)
   assert.match(html, /className = 'warning-history-link'/)
   assert.match(html, /function formatRelativeAge \(value\)/)
+  assert.match(html, /Math\.max\(0, Date\.now\(\) - timestamp\)/)
+  assert.doesNotMatch(html, /reportGeneratedAtMs/)
   assert.match(html, /return 'https:\/\/github\.com\/orgs\/' \+ encodeURIComponent\(segments\[0\]\) \+/)
   assert.match(html, /return 'https:\/\/github\.com\/' \+ encodeURIComponent\(segments\[0\]\)/)
   assert.doesNotMatch(html, /textSpan\.textContent = ' \(from '/)
@@ -832,12 +838,14 @@ test('--no-report prints missing CODEOWNERS path warnings to stderr', (t) => {
   })
 
   const result = runCli(['--no-report'], { cwd: repoDir })
+  const plainStderr = stripAnsi(result.stderr)
+  const plainStdout = stripAnsi(result.stdout)
 
   assert.equal(result.status, 0, result.stderr)
-  assert.match(result.stderr, /Missing CODEOWNERS paths \(1\):/)
-  assert.match(result.stderr, /- \/does-not-exist\.js owners: @acme\/platform, @alice/)
+  assert.match(plainStderr, /Missing CODEOWNERS paths \(1\):/)
+  assert.match(plainStderr, /- \/does-not-exist\.js owners: @acme\/platform, @alice/)
   assert.match(
-    result.stdout,
+    plainStdout,
     /Coverage summary:\nglobs: "\*\*"\ncodeowners file: CODEOWNERS\nanalyzed files: 3\nunknown files: 0\nmissing path warnings: 1\nlocation warnings: 0/
   )
 })
@@ -891,17 +899,19 @@ test('--no-report prints CODEOWNERS discovery warnings to stderr', (t) => {
   })
 
   const result = runCli(['--no-report'], { cwd: repoDir })
+  const plainStderr = stripAnsi(result.stderr)
+  const plainStdout = stripAnsi(result.stdout)
 
   assert.equal(result.status, 0, result.stderr)
-  assert.match(result.stderr, /CODEOWNERS location warnings \(2\):/)
-  assert.match(result.stderr, /docs\/CODEOWNERS is unused because GitHub selects CODEOWNERS first\./)
+  assert.match(plainStderr, /CODEOWNERS location warnings \(2\):/)
+  assert.match(plainStderr, /docs\/CODEOWNERS is unused because GitHub selects CODEOWNERS first\./)
   assert.match(
-    result.stderr,
+    plainStderr,
     /packages\/CODEOWNERS is in an unsupported location and is ignored by GitHub\./
   )
-  assert.match(result.stdout, /codeowners file: CODEOWNERS/)
-  assert.match(result.stdout, /location warnings: 2/)
-  assert.match(result.stdout, /missing path warnings: 0/)
+  assert.match(plainStdout, /codeowners file: CODEOWNERS/)
+  assert.match(plainStdout, /location warnings: 2/)
+  assert.match(plainStdout, /missing path warnings: 0/)
 })
 
 test('unsupported-only CODEOWNERS locations fail with a clear error', (t) => {
