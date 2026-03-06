@@ -10,7 +10,7 @@
     "lint:commit": "commitlint --last --verbose",
     "lint:commit:message": "commitlint --verbose",
     "test": "node --test",
-    "update-example": "node report.js nodejs/node --no-open -o example.html"
+    "update-example": "node report.js nodejs/node --no-open -o example.html -y"
   },
   "repository": {
     "type": "git",
