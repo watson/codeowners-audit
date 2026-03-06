@@ -86,6 +86,7 @@ In interactive mode, `--no-report` implies `--list-unowned` so output still stay
 | `--list-unowned` | Print unowned file paths to stdout |
 | `--fail-on-unowned` | Exit non-zero when one or more files are unowned |
 | `--fail-on-missing-paths` | Exit non-zero when one or more CODEOWNERS paths match no repository files |
+| `--fail-on-location-warnings` | Exit non-zero when extra or ignored `CODEOWNERS` files are found |
 | `-g, --glob <pattern>` | Repeatable file filter for report/check scope (default: `**`) |
 | `--suggest-teams` | Suggest `@org/team` for uncovered directories |
 | `--suggest-window-days <days>` | Git history lookback window for suggestions (default: `365`) |
@@ -143,7 +144,7 @@ In non-interactive environments, `codeowners-audit` automatically:
 
 Exit code behavior:
 - Exit code `0`: all matched files are covered by `CODEOWNERS`.
-- Exit code `1`: one or more matched files are uncovered, or `--fail-on-missing-paths` is enabled and one or more CODEOWNERS paths match no repository files.
+- Exit code `1`: one or more matched files are uncovered, `--fail-on-missing-paths` is enabled and one or more CODEOWNERS paths match no repository files, or `--fail-on-location-warnings` is enabled and extra or ignored `CODEOWNERS` files are found.
 - Exit code `2`: runtime/setup error (for example: not in a Git repository, missing `CODEOWNERS`, invalid arguments).
 
 ### Common CI commands

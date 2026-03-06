@@ -860,6 +860,49 @@ test('--fail-on-missing-paths passes when all CODEOWNERS paths match repository 
   assert.equal(result.status, 0, result.stderr)
 })
 
+test('--fail-on-location-warnings exits non-zero when extra CODEOWNERS files are found', (t) => {
+  const repoDir = createRepo(t, {
+    codeowners: [
+      '/src/owned.js @team',
+      '/src/unowned.js @team',
+    ].join('\n') + '\n',
+    trackedFiles: {
+      'docs/CODEOWNERS': '/src/owned.js @docs\n',
+      'packages/CODEOWNERS': '/src/owned.js @nested\n',
+    },
+  })
+
+  const result = runCli(['--fail-on-location-warnings'], { cwd: repoDir })
+
+  assert.equal(result.status, 1)
+  assert.match(result.stdout, /Report ready at/)
+})
+
+test('--fail-on-location-warnings is repository-wide and not scoped by --glob', (t) => {
+  const repoDir = createRepo(t, {
+    codeowners: [
+      '/src/owned.js @team',
+      '/src/unowned.js @team',
+    ].join('\n') + '\n',
+    trackedFiles: {
+      'docs/CODEOWNERS': '/src/owned.js @docs\n',
+    },
+  })
+
+  const result = runCli(['--fail-on-location-warnings', '--glob', 'src/owned.js'], { cwd: repoDir })
+
+  assert.equal(result.status, 1)
+  assert.doesNotMatch(result.stdout, /Coverage summary:/)
+})
+
+test('--fail-on-location-warnings passes when there are no CODEOWNERS location warnings', (t) => {
+  const repoDir = createRepo(t)
+
+  const result = runCli(['--fail-on-location-warnings'], { cwd: repoDir })
+
+  assert.equal(result.status, 0, result.stderr)
+})
+
 test('--no-open does not prompt to open report even with interactive stdin', (t) => {
   const repoDir = createRepo(t)
   const result = runCli(['--no-open'], {
@@ -1166,6 +1209,7 @@ test('--help prints usage without failing', (t) => {
   assert.match(result.stdout, /--list-unowned/)
   assert.match(result.stdout, /--fail-on-unowned/)
   assert.match(result.stdout, /--fail-on-missing-paths/)
+  assert.match(result.stdout, /--fail-on-location-warnings/)
   assert.match(result.stdout, /--glob/)
   assert.match(result.stdout, /-g, --glob <pattern>/)
   assert.match(result.stdout, /--suggest-teams/)

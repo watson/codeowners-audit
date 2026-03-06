@@ -240,6 +240,7 @@ async function main () {
  *   listUnowned: boolean,
  *   failOnUnowned: boolean,
  *   failOnMissingPaths: boolean,
+ *   failOnLocationWarnings: boolean,
  *   checkGlobs: string[],
  *   teamSuggestions: boolean,
  *   teamSuggestionsWindowDays: number,
@@ -270,6 +271,7 @@ function parseArgs (args) {
   let listUnowned = false
   let failOnUnowned = false
   let failOnMissingPaths = false
+  let failOnLocationWarnings = false
   /** @type {string[]} */
   let checkGlobs = []
   let teamSuggestions = false
@@ -437,6 +439,11 @@ function parseArgs (args) {
       continue
     }
 
+    if (arg === '--fail-on-location-warnings') {
+      failOnLocationWarnings = true
+      continue
+    }
+
     if (arg === '--glob' || arg === '-g') {
       checkGlobs.push(parseGlobOption(args[index + 1], '--glob'))
       index++
@@ -551,6 +558,7 @@ function parseArgs (args) {
     listUnowned,
     failOnUnowned,
     failOnMissingPaths,
+    failOnLocationWarnings,
     checkGlobs,
     teamSuggestions,
     teamSuggestionsWindowDays,
@@ -741,6 +749,7 @@ function printUsage () {
     ['--list-unowned', 'Print unowned file paths to stdout'],
     ['--fail-on-unowned', 'Exit non-zero when one or more files are unowned'],
     ['--fail-on-missing-paths', 'Exit non-zero when CODEOWNERS paths match no files'],
+    ['--fail-on-location-warnings', 'Exit non-zero when extra or ignored CODEOWNERS files are found'],
     ['-g, --glob <pattern>', 'Repeatable file filter for report/check scope (default: **)'],
     ['--suggest-teams', 'Suggest @org/team for uncovered directories'],
     ['--suggest-window-days <days>', `Git history lookback window for suggestions (default: ${TEAM_SUGGESTIONS_DEFAULT_WINDOW_DAYS})`],
@@ -956,6 +965,7 @@ function openReportInBrowser (target) {
  *   listUnowned: boolean,
  *   failOnUnowned: boolean,
  *   failOnMissingPaths: boolean,
+ *   failOnLocationWarnings: boolean,
  *   checkGlobs: string[],
  *   showCoverageSummary?: boolean,
  * }} options
@@ -1045,6 +1055,10 @@ function outputUnownedReportResults (report, options) {
   }
 
   if (options.failOnMissingPaths && missingPathWarningCount > 0) {
+    process.exitCode = EXIT_CODE_UNCOVERED
+  }
+
+  if (options.failOnLocationWarnings && locationWarningCount > 0) {
     process.exitCode = EXIT_CODE_UNCOVERED
   }
 }
