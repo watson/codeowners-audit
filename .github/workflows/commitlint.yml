@@ -29,7 +29,7 @@ jobs:
       - name: Validate pushed commits
         if: github.event_name == 'push'
         run: |
-          if [ "${{ github.event.before }}" = "0000000000000000000000000000000000000000" ]; then
+          if [ "${{ github.event.before }}" = "0000000000000000000000000000000000000000" ] || ! git rev-parse --verify "${{ github.event.before }}^{commit}" >/dev/null 2>&1; then
             npx commitlint --last --verbose
           else
             npx commitlint --from "${{ github.event.before }}" --to "${{ github.sha }}" --verbose
