@@ -528,7 +528,7 @@
 
   <script type="application/json" id="report-data">{
   "repoName": "nodejs/node",
-  "generatedAt": "2026-03-06T15:51:19.856Z",
+  "generatedAt": "2026-03-06T16:02:16.002Z",
   "options": {
     "includeUntracked": false,
     "teamSuggestionsEnabled": false
@@ -78007,9 +78007,6 @@
       const fmt = new Intl.NumberFormat('en-US')
       const percent = value => Number(value).toFixed(1) + '%'
       const clamp = value => Math.max(0, Math.min(100, value))
-      const reportGeneratedAtMs = Number.isFinite(Date.parse(report.generatedAt))
-        ? Date.parse(report.generatedAt)
-        : Date.now()
       const scopeQueryParam = 'scope'
       const directoryRows = report.directories.filter(row => row.path !== '(root)')
       const teamOwnershipRows = Array.isArray(report.teamOwnership) ? report.teamOwnership : []
@@ -78245,7 +78242,7 @@
         const timestamp = Date.parse(value)
         if (!Number.isFinite(timestamp)) return 'history'
 
-        const elapsedMs = Math.max(0, reportGeneratedAtMs - timestamp)
+        const elapsedMs = Math.max(0, Date.now() - timestamp)
         const minuteMs = 60 * 1000
         const hourMs = 60 * minuteMs
         const dayMs = 24 * hourMs
