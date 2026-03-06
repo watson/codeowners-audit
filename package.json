@@ -7,11 +7,13 @@
     "codeowners-audit": "report.js"
   },
   "scripts": {
+    "coverage": "c8 node --test",
+    "coverage:check": "c8 --check-coverage node --test",
     "lint:commit": "commitlint --last --verbose",
     "lint:commit:message": "commitlint --verbose",
+    "prepare": "husky",
     "test": "node --test",
-    "update-example": "node report.js nodejs/node --no-open -o example.html -y",
-    "prepare": "husky"
+    "update-example": "node report.js nodejs/node --no-open -o example.html -y"
   },
   "repository": {
     "type": "git",
@@ -45,6 +47,7 @@
     "@semantic-release/github": "^12.0.6",
     "@semantic-release/npm": "^13.1.5",
     "@semantic-release/release-notes-generator": "^14.1.0",
+    "c8": "^11.0.0",
     "husky": "^9.1.7",
     "semantic-release": "^25.0.3"
   }

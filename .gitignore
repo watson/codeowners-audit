@@ -1,3 +1,4 @@
 /.npmrc
 /codeowners-gaps-report.html
+/coverage
 /node_modules
