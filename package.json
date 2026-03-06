@@ -10,7 +10,8 @@
     "lint:commit": "commitlint --last --verbose",
     "lint:commit:message": "commitlint --verbose",
     "test": "node --test",
-    "update-example": "node report.js nodejs/node --no-open -o example.html -y"
+    "update-example": "node report.js nodejs/node --no-open -o example.html -y",
+    "prepare": "husky"
   },
   "repository": {
     "type": "git",
@@ -44,6 +45,7 @@
     "@semantic-release/github": "^12.0.6",
     "@semantic-release/npm": "^13.1.5",
     "@semantic-release/release-notes-generator": "^14.1.0",
+    "husky": "^9.1.7",
     "semantic-release": "^25.0.3"
   }
 }
