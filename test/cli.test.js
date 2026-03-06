@@ -680,8 +680,8 @@ test('report includes missing CODEOWNERS path warnings in validation metadata', 
       '/src/owned.js @team',
       '/src/unowned.js @team',
       '/CODEOWNERS @team',
-      '/does-not-exist.js @team',
-      '/missing-dir/ @team',
+      '/does-not-exist.js @acme/platform @alice',
+      '/missing-dir/ @acme/security @bob',
     ].join('\n') + '\n',
   })
 
@@ -696,6 +696,8 @@ test('report includes missing CODEOWNERS path warnings in validation metadata', 
   )
   assert.doesNotMatch(html, /missing-path-warnings-summary/)
   assert.match(html, /patternSpan\.className = 'warning-path'/)
+  assert.match(html, /ownersSpan\.className = 'warning-owners'/)
+  assert.match(html, /ownerLabelSpan\.textContent = ' owners: '/)
   assert.doesNotMatch(html, /textSpan\.textContent = ' \(from '/)
   const reportData = parseReportDataFromHtml(html)
   assert.equal(reportData.codeownersValidationMeta.discoveryWarningCount, 0)
@@ -705,6 +707,8 @@ test('report includes missing CODEOWNERS path warnings in validation metadata', 
     ['/does-not-exist.js', '/missing-dir/']
   )
   assert.equal(reportData.codeownersValidationMeta.missingPathWarnings[0].codeownersPath, 'CODEOWNERS')
+  assert.deepEqual(reportData.codeownersValidationMeta.missingPathWarnings[0].owners, ['@acme/platform', '@alice'])
+  assert.deepEqual(reportData.codeownersValidationMeta.missingPathWarnings[1].owners, ['@acme/security', '@bob'])
   assert.equal(
     Object.hasOwn(reportData.codeownersValidationMeta.missingPathWarnings[0], 'scopedDir'),
     false
@@ -718,7 +722,7 @@ test('--no-report prints missing CODEOWNERS path warnings to stderr', (t) => {
       '/src/owned.js @team',
       '/src/unowned.js @team',
       '/CODEOWNERS @team',
-      '/does-not-exist.js @team',
+      '/does-not-exist.js @acme/platform @alice',
     ].join('\n') + '\n',
   })
 
@@ -726,7 +730,7 @@ test('--no-report prints missing CODEOWNERS path warnings to stderr', (t) => {
 
   assert.equal(result.status, 0, result.stderr)
   assert.match(result.stderr, /Missing CODEOWNERS paths \(1\):/)
-  assert.match(result.stderr, /- \/does-not-exist\.js/)
+  assert.match(result.stderr, /- \/does-not-exist\.js owners: @acme\/platform, @alice/)
   assert.match(
     result.stdout,
     /Coverage summary:\nglobs: "\*\*"\ncodeowners file: CODEOWNERS\nanalyzed files: 3\nunknown files: 0\nmissing path warnings: 1\nlocation warnings: 0/

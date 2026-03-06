@@ -1009,7 +1009,7 @@ function outputUnownedReportResults (report, options) {
       )
     )
     for (const warning of missingPathWarnings) {
-      console.error('- %s', colorizeCliText(warning.pattern, [ANSI_YELLOW], colorStderr))
+      console.error('%s', formatMissingPathWarningForCli(warning, colorStderr))
     }
     console.error('')
   }
@@ -1262,6 +1262,35 @@ function formatCodeownersDiscoveryWarningForCli (warning, useColor) {
   }
 
   return bullet + warningPath + warningText
+}
+
+/**
+ * Format a missing CODEOWNERS path warning for CLI output.
+ * @param {{
+ *   codeownersPath: string,
+ *   pattern: string,
+ *   owners: string[]
+ * }} warning
+ * @param {boolean} useColor
+ * @returns {string}
+ */
+function formatMissingPathWarningForCli (warning, useColor) {
+  const bullet = colorizeCliText('- ', [ANSI_DIM], useColor)
+  const warningPath = colorizeCliText(warning.pattern, [ANSI_YELLOW], useColor)
+  const ownerLabel = colorizeCliText(' owners: ', [ANSI_DIM], useColor)
+  const ownerList = formatCodeownersOwnersList(warning.owners)
+  const ownerText = colorizeCliText(ownerList, [ANSI_CYAN], useColor)
+  return bullet + warningPath + ownerLabel + ownerText
+}
+
+/**
+ * Format a CODEOWNERS owner list for human-readable output.
+ * @param {string[]|undefined} owners
+ * @returns {string}
+ */
+function formatCodeownersOwnersList (owners) {
+  if (!Array.isArray(owners) || owners.length === 0) return '(none)'
+  return owners.join(', ')
 }
 
 /**

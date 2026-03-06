@@ -247,6 +247,10 @@
       color: #fbbf24;
       font-weight: 600;
     }
+    .warning-owners {
+      color: #67e8f9;
+      font-weight: 600;
+    }
     .warning-text {
       color: var(--muted);
     }
@@ -617,6 +621,18 @@
           patternSpan.className = 'warning-path'
           patternSpan.textContent = warning.pattern
           item.appendChild(patternSpan)
+
+          const ownerLabelSpan = document.createElement('span')
+          ownerLabelSpan.className = 'warning-text'
+          ownerLabelSpan.textContent = ' owners: '
+          item.appendChild(ownerLabelSpan)
+
+          const ownersSpan = document.createElement('span')
+          ownersSpan.className = 'warning-owners'
+          ownersSpan.textContent = Array.isArray(warning.owners) && warning.owners.length > 0
+            ? warning.owners.join(', ')
+            : '(none)'
+          item.appendChild(ownersSpan)
 
           list.appendChild(item)
         }
