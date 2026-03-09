@@ -5,7 +5,6 @@ import { generateNotes as generateConventionalNotes } from '@semantic-release/re
 
 const DEFAULT_RELEASE_PATHS = [
   'report.js',
-  'report.template.html',
   'lib/**',
   'package.json',
 ]

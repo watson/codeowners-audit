@@ -7,7 +7,6 @@ export default {
       {
         releasePaths: [
           'report.js',
-          'report.template.html',
           'lib/**',
           'package.json',
         ],

@@ -80,11 +80,11 @@ test('getPublishableCommits keeps only commits that touch release paths', (t) =>
   const repoDir = createRepo(t)
   const docsCommit = commitFile(repoDir, 'README.md', '# docs\n', 'feat: rewrite README')
   const fixCommit = commitFile(repoDir, 'lib/index.js', 'export const value = 2\n', 'fix: respect ignored CODEOWNERS warnings')
-  const perfCommit = commitFile(repoDir, 'report.template.html', '<html>fast</html>\n', 'perf: shrink report template')
+  const perfCommit = commitFile(repoDir, 'lib/report.template.html', '<html>fast</html>\n', 'perf: shrink report template')
 
   const publishableCommits = getPublishableCommits(
     {
-      releasePaths: ['report.js', 'report.template.html', 'lib/**', 'package.json'],
+      releasePaths: ['report.js', 'lib/**', 'package.json'],
     },
     {
       cwd: repoDir,
@@ -97,7 +97,7 @@ test('getPublishableCommits keeps only commits that touch release paths', (t) =>
     publishableCommits.map((commit) => commit.hash),
     [perfCommit.hash, fixCommit.hash]
   )
-  assert.deepEqual(publishableCommits[0].publishableFiles, ['report.template.html'])
+  assert.deepEqual(publishableCommits[0].publishableFiles, ['lib/report.template.html'])
   assert.deepEqual(publishableCommits[1].publishableFiles, ['lib/index.js'])
 })
 
@@ -108,7 +108,7 @@ test('analyzeCommits ignores semantic commits that only touch non-publishable fi
 
   const releaseType = await analyzeCommits(
     {
-      releasePaths: ['report.js', 'report.template.html', 'lib/**', 'package.json'],
+      releasePaths: ['report.js', 'lib/**', 'package.json'],
     },
     {
       cwd: repoDir,
@@ -127,7 +127,7 @@ test('generateNotes excludes semantic commits that only touch non-publishable fi
 
   const notes = await generateNotes(
     {
-      releasePaths: ['report.js', 'report.template.html', 'lib/**', 'package.json'],
+      releasePaths: ['report.js', 'lib/**', 'package.json'],
     },
     {
       cwd: repoDir,
