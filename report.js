@@ -19,6 +19,7 @@ import {
   findMatchingOwners,
 } from './lib/codeowners-parser.js'
 import { runGitCommand, toPosixPath, formatCommandError } from './lib/git.js'
+import { directoryAncestors } from './lib/paths.js'
 import { createProgressLogger } from './lib/progress.js'
 import { collectDirectoryTeamSuggestions } from './lib/team-suggestions.js'
 
@@ -1347,11 +1348,8 @@ function buildReport (repoRoot, files, codeownersDescriptor, options, progress =
 
     updateStats(directoryStats, '', isOwned)
 
-    const segments = filePath.split('/')
-    let currentPath = ''
-    for (let index = 0; index < segments.length - 1; index++) {
-      currentPath = currentPath ? `${currentPath}/${segments[index]}` : segments[index]
-      updateStats(directoryStats, currentPath, isOwned)
+    for (const dirPath of directoryAncestors(filePath)) {
+      updateStats(directoryStats, dirPath, isOwned)
     }
 
     if (
