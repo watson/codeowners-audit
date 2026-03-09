@@ -37,6 +37,7 @@ main()
  * @returns {Promise<void>}
  */
 async function main () {
+  /** @type {string|null} */
   let clonedTempDir = null
   try {
     const options = parseArgs(process.argv.slice(2))
@@ -183,7 +184,7 @@ async function main () {
       clonedTempDir = null
     }
     console.error('Failed to generate CODEOWNERS gap report:')
-    console.error(String(error && error.stack ? error.stack : error))
+    console.error(error)
     process.exit(EXIT_CODE_RUNTIME_ERROR)
   }
 }
