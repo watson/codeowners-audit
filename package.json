@@ -1,6 +1,6 @@
 {
   "name": "codeowners-audit",
-  "version": "2.7.1",
+  "version": "2.7.2",
   "description": "Generate an HTML report for CODEOWNERS ownership gaps and run in CI or from the CLI to fail when files are not covered.",
   "type": "module",
   "bin": {
