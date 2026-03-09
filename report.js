@@ -6,6 +6,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import readline from 'node:readline'
+import { runGitCommand, toPosixPath, formatCommandError } from './lib/git.js'
 import { createProgressLogger } from './lib/progress.js'
 import {
   collectDirectoryTeamSuggestions,
@@ -17,7 +18,6 @@ const DEFAULT_OUTPUT_PATH = path.join(tmpdir(), 'codeowners-audit', DEFAULT_OUTP
 const UPLOAD_PROVIDER = 'zenbin'
 const ZENBIN_BASE_URL = process.env.CODEOWNERS_AUDIT_ZENBIN_BASE_URL || 'https://zenbin.org'
 const ZENBIN_MAX_UPLOAD_BYTES = 1024 * 1024
-const GIT_COMMAND_MAX_BUFFER = 64 * 1024 * 1024
 const TEAM_SUGGESTIONS_DEFAULT_WINDOW_DAYS = 365
 const TEAM_SUGGESTIONS_DEFAULT_TOP = 3
 const GITHUB_API_BASE_URL = 'https://api.github.com'
@@ -1157,24 +1157,6 @@ function outputUnownedReportResults (report, options) {
 }
 
 /**
- * Get a readable message from a child-process error.
- * @param {unknown} error
- * @returns {string}
- */
-function formatCommandError (error) {
-  if (error && typeof error === 'object' && 'stderr' in error) {
-    const stderr = String(error.stderr || '').trim()
-    if (stderr) return stderr
-  }
-
-  if (error && typeof error === 'object' && 'message' in error) {
-    return String(error.message)
-  }
-
-  return String(error)
-}
-
-/**
  * Build a file matcher for CLI check globs.
  * @param {string[]} patterns
  * @returns {(filePath: string) => boolean}
@@ -1291,21 +1273,6 @@ function createZenbinPageId (fileBaseName) {
   const timestamp = Date.now().toString(36)
   const randomPart = Math.random().toString(36).slice(2, 8)
   return `${base}-${timestamp}-${randomPart}`
-}
-
-/**
- * Execute a git command and return stdout.
- * @param {string[]} args
- * @param {string} [cwd]
- * @returns {string}
- */
-function runGitCommand (args, cwd) {
-  return execFileSync('git', args, {
-    cwd,
-    encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'pipe'],
-    maxBuffer: GIT_COMMAND_MAX_BUFFER,
-  })
 }
 
 /**
@@ -1513,15 +1480,6 @@ function buildMissingSupportedCodeownersError (discoveredCodeownersPaths) {
   }
 
   return 'No CODEOWNERS files found in this repository.'
-}
-
-/**
- * Normalize a path to POSIX separators.
- * @param {string} value
- * @returns {string}
- */
-function toPosixPath (value) {
-  return value.split(path.sep).join('/')
 }
 
 /**
