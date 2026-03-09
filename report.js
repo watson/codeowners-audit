@@ -21,10 +21,14 @@ import {
 import { runGitCommand, toPosixPath, formatCommandError } from './lib/git.js'
 import { directoryAncestors } from './lib/paths.js'
 import { createProgressLogger } from './lib/progress.js'
+import {
+  isRepoUrl,
+  normalizeRepoUrl,
+  resolveRepoDisplayName,
+  resolveRepoWebUrl,
+} from './lib/repository.js'
 import { collectDirectoryTeamSuggestions } from './lib/team-suggestions.js'
-
-const ZENBIN_BASE_URL = process.env.CODEOWNERS_AUDIT_ZENBIN_BASE_URL || 'https://zenbin.org'
-const ZENBIN_MAX_UPLOAD_BYTES = 1024 * 1024
+import { uploadReport } from './lib/upload.js'
 const FILE_ANALYSIS_PROGRESS_INTERVAL = 20000
 const SUPPORTED_CODEOWNERS_PATHS = ['.github/CODEOWNERS', 'CODEOWNERS', 'docs/CODEOWNERS']
 const SUPPORTED_CODEOWNERS_PATHS_LABEL = SUPPORTED_CODEOWNERS_PATHS.join(', ')
@@ -368,115 +372,6 @@ async function promptForYesNo (question) {
   })
 }
 
-/**
- * Determine whether a value looks like a remote repository URL or shorthand
- * rather than a local file path.
- * @param {string} value
- * @returns {boolean}
- */
-function isRepoUrl (value) {
-  if (value.includes('://')) return true
-  if (value.startsWith('git@')) return true
-  if (/^[a-zA-Z0-9][a-zA-Z0-9-]*\/[a-zA-Z0-9._-]+$/.test(value)) return true
-  return false
-}
-
-/**
- * Normalize a repo identifier to a URL suitable for `git clone`.
- * Full URLs and SSH addresses are returned as-is.
- * GitHub-style shorthand (owner/repo) is expanded to an HTTPS URL.
- * @param {string} value
- * @returns {string}
- */
-function normalizeRepoUrl (value) {
-  if (value.includes('://') || value.startsWith('git@')) return value
-  return `https://github.com/${value}.git`
-}
-
-/**
- * Resolve a human-friendly display name for a repository.
- * Tries `git remote get-url origin` first and extracts "owner/repo" from it.
- * Falls back to the directory basename when no origin remote is available.
- * @param {string} repoRoot
- * @returns {string}
- */
-function resolveRepoDisplayName (repoRoot) {
-  try {
-    const remoteUrl = runGitCommand(['remote', 'get-url', 'origin'], repoRoot).trim()
-    if (remoteUrl) {
-      return deriveDisplayNameFromUrl(remoteUrl)
-    }
-  } catch {}
-  return path.basename(repoRoot)
-}
-
-/**
- * Resolve a browsable repository URL from the origin remote when possible.
- * Returns null for repositories without an origin remote or file-based remotes.
- * @param {string} repoRoot
- * @returns {string|null}
- */
-function resolveRepoWebUrl (repoRoot) {
-  try {
-    const remoteUrl = runGitCommand(['remote', 'get-url', 'origin'], repoRoot).trim()
-    if (remoteUrl) {
-      return deriveRepoWebUrlFromRemoteUrl(remoteUrl)
-    }
-  } catch {}
-  return null
-}
-
-/**
- * Derive a human-friendly repository name from a remote URL.
- * For GitHub/GitLab-style URLs, returns "owner/repo".
- * Falls back to the URL itself for unrecognised formats.
- * @param {string} url
- * @returns {string}
- */
-function deriveDisplayNameFromUrl (url) {
-  const sshMatch = url.match(/^git@[^:]+:([^/]+)\/(.+?)(?:\.git)?$/)
-  if (sshMatch) {
-    return `${sshMatch[1]}/${sshMatch[2]}`
-  }
-
-  try {
-    const parsed = new URL(url)
-    if (parsed.protocol === 'file:') {
-      const base = path.posix.basename(parsed.pathname).replace(/\.git$/i, '')
-      return base || url
-    }
-    const segments = parsed.pathname.replaceAll(/^\/+|\/+$/g, '').split('/')
-    if (segments.length >= 2) {
-      return `${segments[0]}/${segments[1].replace(/\.git$/i, '')}`
-    }
-  } catch {}
-
-  return url
-}
-
-/**
- * Derive a browsable repository URL from a common git remote URL.
- * Supports git@host:owner/repo.git and http(s)://host/owner/repo(.git) forms.
- * @param {string} remoteUrl
- * @returns {string|null}
- */
-function deriveRepoWebUrlFromRemoteUrl (remoteUrl) {
-  const sshMatch = remoteUrl.match(/^git@([^:]+):([^/]+)\/(.+?)(?:\.git)?$/)
-  if (sshMatch) {
-    return `https://${sshMatch[1]}/${sshMatch[2]}/${sshMatch[3]}`
-  }
-
-  try {
-    const parsed = new URL(remoteUrl)
-    if (parsed.protocol === 'file:') return null
-    const segments = parsed.pathname.replaceAll(/^\/+|\/+$/g, '').split('/')
-    if (segments.length >= 2) {
-      return `${parsed.protocol}//${parsed.host}/${segments[0]}/${segments[1].replace(/\.git$/i, '')}`
-    }
-  } catch {}
-
-  return null
-}
 
 /**
  * Determine whether ANSI color output should be enabled for a stream.
@@ -685,103 +580,6 @@ function filterFilesByCliGlobs (files, patterns) {
   return files.filter(filePath => matcher(filePath))
 }
 
-/**
- * Upload the generated HTML report.
- * @param {string} reportPath
- * @returns {Promise<string>}
- */
-async function uploadReport (reportPath) {
-  return uploadToZenbin(reportPath)
-}
-
-/**
- * Upload a file to ZenBin and return the public URL.
- * @param {string} filePath
- * @returns {Promise<string>}
- */
-async function uploadToZenbin (filePath) {
-  const fileBaseName = path.basename(filePath, path.extname(filePath))
-  const pageId = createZenbinPageId(fileBaseName)
-  const payload = JSON.stringify({ html: readFileSync(filePath, 'utf8') })
-  const payloadBytes = Buffer.byteLength(payload, 'utf8')
-
-  if (payloadBytes >= ZENBIN_MAX_UPLOAD_BYTES) {
-    throw new Error(
-      `Upload failed (${UPLOAD_PROVIDER}): report is too large for ZenBin (${formatBytes(payloadBytes)} payload; ` +
-      `limit is about ${formatBytes(ZENBIN_MAX_UPLOAD_BYTES)}). ` +
-      `Re-run without --upload and share the generated HTML file directly.`
-    )
-  }
-
-  const url = `${ZENBIN_BASE_URL}/v1/pages/${pageId}`
-
-  /** @type {globalThis.Response} */
-  let httpResponse
-  try {
-    httpResponse = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: payload,
-    })
-  } catch (error) {
-    throw new Error(`Upload failed (${UPLOAD_PROVIDER}): ${error instanceof Error ? error.message : String(error)}`)
-  }
-
-  const responseText = await httpResponse.text()
-
-  if (!httpResponse.ok) {
-    const likelyTooLargeHint = httpResponse.status === 400
-      ? ` (ZenBin may reject payloads near 1 MiB; current payload is ${formatBytes(payloadBytes)})`
-      : ''
-    throw new Error(
-      `Upload failed (${UPLOAD_PROVIDER}): HTTP ${httpResponse.status}${likelyTooLargeHint}`
-    )
-  }
-
-  /** @type {{ url?: string }} */
-  let response
-  try {
-    response = JSON.parse(responseText)
-  } catch {
-    throw new Error(
-      `Upload failed (${UPLOAD_PROVIDER}): invalid JSON response: ${JSON.stringify(responseText.trim())}`
-    )
-  }
-
-  const maybeUrl = response && typeof response.url === 'string' ? response.url.trim() : ''
-  if (!/^https?:\/\//.test(maybeUrl)) {
-    throw new Error(`Upload failed (${UPLOAD_PROVIDER}): missing URL in response: ${JSON.stringify(response)}`)
-  }
-
-  return maybeUrl
-}
-
-/**
- * Format bytes as an integer KiB value.
- * @param {number} byteCount
- * @returns {string}
- */
-function formatBytes (byteCount) {
-  return `${Math.ceil(byteCount / 1024)} KiB`
-}
-
-/**
- * Build a stable-ish unique page id for ZenBin uploads.
- * @param {string} fileBaseName
- * @returns {string}
- */
-function createZenbinPageId (fileBaseName) {
-  const normalizedBase = fileBaseName
-    .toLowerCase()
-    .replaceAll(/[^a-z0-9]+/g, '-')
-    .replaceAll(/^-+|-+$/g, '')
-    .slice(0, 40)
-
-  const base = normalizedBase || 'report'
-  const timestamp = Date.now().toString(36)
-  const randomPart = Math.random().toString(36).slice(2, 8)
-  return `${base}-${timestamp}-${randomPart}`
-}
 
 /**
  * Detect whether the repository is shallow.
