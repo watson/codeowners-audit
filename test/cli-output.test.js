@@ -123,18 +123,19 @@ test('formatCodeownersOwnersList: returns "(none)" for undefined', () => {
 // --- formatCodeownersDiscoveryWarningForCli ---
 
 test('formatCodeownersDiscoveryWarningForCli: formats unsupported location warning', () => {
-  const warning = { path: '.github/CODEOWNERS2', type: 'unsupported-location' }
+  const warning = /** @type {const} */ ({ path: '.github/CODEOWNERS2', type: 'unsupported-location', message: 'CODEOWNERS file found in unsupported location' })
   const result = stripAnsi(formatCodeownersDiscoveryWarningForCli(warning, false))
   assert.ok(result.includes('.github/CODEOWNERS2'))
   assert.ok(result.includes('unsupported location'))
 })
 
 test('formatCodeownersDiscoveryWarningForCli: formats unused supported location warning', () => {
-  const warning = {
+  const warning = /** @type {const} */ ({
     path: 'docs/CODEOWNERS',
     type: 'unused-supported-location',
     referencePath: '.github/CODEOWNERS',
-  }
+    message: 'CODEOWNERS file is unused because .github/CODEOWNERS takes precedence',
+  })
   const result = stripAnsi(formatCodeownersDiscoveryWarningForCli(warning, false))
   assert.ok(result.includes('docs/CODEOWNERS'))
   assert.ok(result.includes('.github/CODEOWNERS'))
@@ -144,7 +145,7 @@ test('formatCodeownersDiscoveryWarningForCli: formats unused supported location 
 // --- formatMissingPathWarningForCli ---
 
 test('formatMissingPathWarningForCli: formats pattern and owners', () => {
-  const warning = { pattern: '/nonexistent/', owners: ['@team-a', '@team-b'] }
+  const warning = { codeownersPath: '.github/CODEOWNERS', pattern: '/nonexistent/', owners: ['@team-a', '@team-b'] }
   const result = stripAnsi(formatMissingPathWarningForCli(warning, false))
   assert.ok(result.includes('/nonexistent/'))
   assert.ok(result.includes('@team-a, @team-b'))
