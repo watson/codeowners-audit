@@ -516,6 +516,11 @@
         <h3 id="codeowners-discovery-warnings-heading">CODEOWNERS Location Warnings</h3>
         <ul id="codeowners-discovery-warnings-list"></ul>
       </div>
+      <div id="unprotected-directory-warnings" class="validation-warnings" hidden>
+        <h3 id="unprotected-directory-warnings-heading">Directories With Fragile Coverage</h3>
+        <p class="warning-text" style="margin: 4px 0 0; font-size: 13px;">These directories show 100% coverage, but only through individual file rules. New files added here will lack code owners.</p>
+        <ul id="unprotected-directory-warnings-list"></ul>
+      </div>
     </section>
   </div>
 
@@ -596,6 +601,7 @@
       renderCodeownersFiles(report.codeownersFiles)
       renderMissingPathWarnings(codeownersValidationMeta)
       renderCodeownersDiscoveryWarnings(codeownersValidationMeta)
+      renderUnprotectedDirectoryWarnings(codeownersValidationMeta)
       directoryController = setupDirectoryTable(
         report.directories,
         suggestionByPath,
@@ -830,6 +836,42 @@
             textSpan.textContent = ' is in an unsupported location and is ignored by GitHub.'
             item.appendChild(textSpan)
           }
+
+          list.appendChild(item)
+        }
+
+        container.hidden = false
+      }
+
+      function renderUnprotectedDirectoryWarnings (validationMeta) {
+        const container = document.getElementById('unprotected-directory-warnings')
+        const heading = document.getElementById('unprotected-directory-warnings-heading')
+        const list = document.getElementById('unprotected-directory-warnings-list')
+        const warningRows = Array.isArray(validationMeta && validationMeta.unprotectedDirectoryWarnings)
+          ? validationMeta.unprotectedDirectoryWarnings
+          : []
+
+        list.innerHTML = ''
+        if (warningRows.length === 0) {
+          container.hidden = true
+          return
+        }
+
+        const warningCount = Number(validationMeta && validationMeta.unprotectedDirectoryWarningCount) || warningRows.length
+        heading.textContent = 'Directories With Fragile Coverage (' + fmt.format(warningCount) + ')'
+
+        for (const warning of warningRows) {
+          const item = document.createElement('li')
+          const pathSpan = document.createElement('span')
+          pathSpan.className = 'warning-path'
+          pathSpan.textContent = warning.directory === '/' ? '/' : warning.directory + '/'
+          item.appendChild(pathSpan)
+
+          const detailSpan = document.createElement('span')
+          detailSpan.className = 'warning-text'
+          const fileLabel = warning.fileCount === 1 ? '1 file' : fmt.format(warning.fileCount) + ' files'
+          detailSpan.textContent = ' (' + fileLabel + ') \u2014 new files will lack owners'
+          item.appendChild(detailSpan)
 
           list.appendChild(item)
         }

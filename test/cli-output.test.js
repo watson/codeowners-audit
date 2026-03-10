@@ -7,6 +7,7 @@ import {
   formatCodeownersOwnersList,
   formatCodeownersDiscoveryWarningForCli,
   formatMissingPathWarningForCli,
+  formatUnprotectedDirectoryWarningForCli,
 } from '../lib/cli-output.js'
 
 function stripAnsi (value) {
@@ -149,4 +150,29 @@ test('formatMissingPathWarningForCli: formats pattern and owners', () => {
   const result = stripAnsi(formatMissingPathWarningForCli(warning, false))
   assert.ok(result.includes('/nonexistent/'))
   assert.ok(result.includes('@team-a, @team-b'))
+})
+
+// --- formatUnprotectedDirectoryWarningForCli ---
+
+test('formatUnprotectedDirectoryWarningForCli: formats directory with file count', () => {
+  const warning = { directory: 'src/utils', fileCount: 5 }
+  const result = stripAnsi(formatUnprotectedDirectoryWarningForCli(warning, false))
+  assert.ok(result.includes('src/utils/'))
+  assert.ok(result.includes('5 files'))
+  assert.ok(result.includes('new files will lack owners'))
+})
+
+test('formatUnprotectedDirectoryWarningForCli: singular file count', () => {
+  const warning = { directory: 'lib', fileCount: 1 }
+  const result = stripAnsi(formatUnprotectedDirectoryWarningForCli(warning, false))
+  assert.ok(result.includes('lib/'))
+  assert.ok(result.includes('1 file)'))
+  assert.ok(!result.includes('1 files'))
+})
+
+test('formatUnprotectedDirectoryWarningForCli: root directory', () => {
+  const warning = { directory: '/', fileCount: 3 }
+  const result = stripAnsi(formatUnprotectedDirectoryWarningForCli(warning, false))
+  assert.ok(result.includes('/'))
+  assert.ok(result.includes('3 files'))
 })

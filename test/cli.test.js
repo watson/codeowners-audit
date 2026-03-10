@@ -846,7 +846,7 @@ test('--no-report prints missing CODEOWNERS path warnings to stderr', (t) => {
   assert.match(plainStderr, /- \/does-not-exist\.js owners: @acme\/platform, @alice/)
   assert.match(
     plainStdout,
-    /Coverage summary:\nglobs: "\*\*"\ncodeowners file: CODEOWNERS\nanalyzed files: 3\nunknown files: 0\nmissing path warnings: 1\nlocation warnings: 0/
+    /Coverage summary:\nglobs: "\*\*"\ncodeowners file: CODEOWNERS\nanalyzed files: 3\nunknown files: 0\nmissing path warnings: 1\nlocation warnings: 0\nfragile coverage directories: /
   )
 })
 
@@ -1018,6 +1018,119 @@ test('--fail-on-location-warnings passes when there are no CODEOWNERS location w
   const repoDir = createRepo(t)
 
   const result = runCli(['--fail-on-location-warnings'], { cwd: repoDir })
+
+  assert.equal(result.status, 0, result.stderr)
+})
+
+test('report includes unprotected directory warnings when coverage relies on individual file patterns', (t) => {
+  const repoDir = createRepo(t, {
+    codeowners: [
+      '/src/utils/a.js @team-a',
+      '/src/utils/b.js @team-a',
+      '/src/utils/c.js @team-a',
+      '/src/lib/ @team-b',
+    ].join('\n') + '\n',
+    trackedFiles: {
+      'src/utils/a.js': 'module.exports = 1\n',
+      'src/utils/b.js': 'module.exports = 2\n',
+      'src/utils/c.js': 'module.exports = 3\n',
+      'src/lib/index.js': 'module.exports = 4\n',
+    },
+  })
+
+  const result = runCli(['--output', 'unprotected-dirs.html'], { cwd: repoDir })
+
+  assert.equal(result.status, 0, result.stderr)
+  const html = readFileSync(path.join(repoDir, 'unprotected-dirs.html'), 'utf8')
+  assert.match(html, /id="unprotected-directory-warnings-heading">Directories With Fragile Coverage<\/h3>/)
+  assert.match(html, /id="unprotected-directory-warnings-list"/)
+  assert.match(html, /new files will lack owners/)
+  const reportData = parseReportDataFromHtml(html)
+  assert.ok(reportData.codeownersValidationMeta.unprotectedDirectoryWarningCount > 0)
+  const utilsWarning = reportData.codeownersValidationMeta.unprotectedDirectoryWarnings.find(
+    (w) => w.directory === 'src/utils'
+  )
+  assert.ok(utilsWarning, 'should warn about src/utils which is covered by individual file patterns')
+  assert.equal(utilsWarning.fileCount, 3)
+  const libWarning = reportData.codeownersValidationMeta.unprotectedDirectoryWarnings.find(
+    (w) => w.directory === 'src/lib'
+  )
+  assert.equal(libWarning, undefined, 'should not warn about src/lib which has a directory pattern')
+})
+
+test('unprotected directory warnings are not generated when a parent directory pattern covers new files', (t) => {
+  const repoDir = createRepo(t, {
+    codeowners: [
+      '/src/ @team-a',
+      '/src/utils/a.js @team-b',
+      '/src/utils/b.js @team-b',
+    ].join('\n') + '\n',
+    trackedFiles: {
+      'src/utils/a.js': 'module.exports = 1\n',
+      'src/utils/b.js': 'module.exports = 2\n',
+    },
+  })
+
+  const result = runCli(['--output', 'parent-dir-coverage.html'], { cwd: repoDir })
+
+  assert.equal(result.status, 0, result.stderr)
+  const html = readFileSync(path.join(repoDir, 'parent-dir-coverage.html'), 'utf8')
+  const reportData = parseReportDataFromHtml(html)
+  const utilsWarning = reportData.codeownersValidationMeta.unprotectedDirectoryWarnings.find(
+    (w) => w.directory === 'src/utils'
+  )
+  assert.equal(utilsWarning, undefined, 'should not warn when parent dir pattern covers new files')
+})
+
+test('--no-report prints unprotected directory warnings to stderr', (t) => {
+  const repoDir = createRepo(t, {
+    codeowners: [
+      '/src/utils/a.js @team',
+      '/src/utils/b.js @team',
+      '/CODEOWNERS @team',
+    ].join('\n') + '\n',
+    trackedFiles: {
+      'src/utils/a.js': 'module.exports = 1\n',
+      'src/utils/b.js': 'module.exports = 2\n',
+    },
+  })
+
+  const result = runCli(['--no-report'], { cwd: repoDir })
+  const plainStderr = stripAnsi(result.stderr)
+  const plainStdout = stripAnsi(result.stdout)
+
+  assert.equal(result.status, 0, result.stderr)
+  assert.match(plainStderr, /Directories with fragile coverage \(\d+\):/)
+  assert.match(plainStderr, /src\/utils\//)
+  assert.match(plainStderr, /new files will lack owners/)
+  assert.match(plainStdout, /fragile coverage directories: /)
+})
+
+test('--fail-on-fragile-coverage exits non-zero when unprotected directories exist', (t) => {
+  const repoDir = createRepo(t, {
+    codeowners: [
+      '/src/utils/a.js @team',
+      '/src/utils/b.js @team',
+      '/CODEOWNERS @team',
+    ].join('\n') + '\n',
+    trackedFiles: {
+      'src/utils/a.js': 'module.exports = 1\n',
+      'src/utils/b.js': 'module.exports = 2\n',
+    },
+  })
+
+  const result = runCli(['--fail-on-fragile-coverage'], { cwd: repoDir })
+
+  assert.equal(result.status, 1)
+  assert.match(result.stdout, /Report ready at/)
+})
+
+test('--fail-on-fragile-coverage passes when all directories have catch-all coverage', (t) => {
+  const repoDir = createRepo(t, {
+    codeowners: '* @team\n',
+  })
+
+  const result = runCli(['--fail-on-fragile-coverage'], { cwd: repoDir })
 
   assert.equal(result.status, 0, result.stderr)
 })
@@ -1329,6 +1442,7 @@ test('--help prints usage without failing', (t) => {
   assert.match(result.stdout, /--fail-on-unowned/)
   assert.match(result.stdout, /--fail-on-missing-paths/)
   assert.match(result.stdout, /--fail-on-location-warnings/)
+  assert.match(result.stdout, /--fail-on-fragile-coverage/)
   assert.match(result.stdout, /--glob/)
   assert.match(result.stdout, /-g, --glob <pattern>/)
   assert.match(result.stdout, /--suggest-teams/)

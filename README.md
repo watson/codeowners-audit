@@ -29,6 +29,7 @@ See how ownership coverage looks in practice with [this interactive report](http
 - Team ownership explorer with quick team chips and owned-file filtering
 - Matches GitHub `CODEOWNERS` discovery precedence: `.github/`, repository root, then `docs/`
 - Detects CODEOWNERS patterns that match no repository paths
+- Detects directories with fragile coverage — 100% covered through individual file rules, but new files would lack owners
 - Warns when extra or unsupported `CODEOWNERS` files will be ignored by GitHub
 - Optional upload to [zenbin.org](https://zenbin.org) for easy sharing
 
@@ -87,6 +88,7 @@ In interactive mode, `--no-report` implies `--list-unowned` so output still stay
 | `--fail-on-unowned` | Exit non-zero when one or more files are unowned |
 | `--fail-on-missing-paths` | Exit non-zero when one or more CODEOWNERS paths match no repository files |
 | `--fail-on-location-warnings` | Exit non-zero when extra or ignored `CODEOWNERS` files are found |
+| `--fail-on-fragile-coverage` | Exit non-zero when directories have fragile file-by-file coverage |
 | `-g, --glob <pattern>` | Repeatable file filter for report/check scope (default: `**`) |
 | `--suggest-teams` | Suggest `@org/team` for uncovered directories |
 | `--suggest-window-days <days>` | Git history lookback window for suggestions (default: `365`) |
@@ -144,7 +146,7 @@ In non-interactive environments, `codeowners-audit` automatically:
 
 Exit code behavior:
 - Exit code `0`: all matched files are covered by `CODEOWNERS`.
-- Exit code `1`: one or more matched files are uncovered, `--fail-on-missing-paths` is enabled and one or more CODEOWNERS paths match no repository files, or `--fail-on-location-warnings` is enabled and extra or ignored `CODEOWNERS` files are found.
+- Exit code `1`: one or more matched files are uncovered, `--fail-on-missing-paths` is enabled and one or more CODEOWNERS paths match no repository files, `--fail-on-location-warnings` is enabled and extra or ignored `CODEOWNERS` files are found, or `--fail-on-fragile-coverage` is enabled and directories rely on individual file rules instead of directory-level patterns.
 - Exit code `2`: runtime/setup error (for example: not in a Git repository, missing `CODEOWNERS`, invalid arguments).
 
 ### Common CI commands
@@ -223,6 +225,7 @@ The generated page includes:
 - active `CODEOWNERS` file and rule count
 - warnings for extra or unsupported `CODEOWNERS` files that GitHub will ignore
 - warnings for CODEOWNERS patterns that match no repository paths
+- warnings for directories with fragile coverage (owned through individual file rules only)
 
 The report is self-contained, so it can be opened directly from disk or shared after upload.
 

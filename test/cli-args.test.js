@@ -19,6 +19,7 @@ test('parseArgs: returns defaults with no arguments', () => {
   assert.equal(result.failOnUnowned, false)
   assert.equal(result.failOnMissingPaths, false)
   assert.equal(result.failOnLocationWarnings, false)
+  assert.equal(result.failOnFragileCoverage, false)
   assert.deepEqual(result.checkGlobs, ['**'])
   assert.equal(result.teamSuggestions, false)
   assert.equal(result.teamSuggestionsWindowDays, TEAM_SUGGESTIONS_DEFAULT_WINDOW_DAYS)
@@ -66,6 +67,10 @@ test('parseArgs: --fail-on-missing-paths', () => {
 
 test('parseArgs: --fail-on-location-warnings', () => {
   assert.equal(parseArgs(['--fail-on-location-warnings']).failOnLocationWarnings, true)
+})
+
+test('parseArgs: --fail-on-fragile-coverage', () => {
+  assert.equal(parseArgs(['--fail-on-fragile-coverage']).failOnFragileCoverage, true)
 })
 
 test('parseArgs: --suggest-teams', () => {
