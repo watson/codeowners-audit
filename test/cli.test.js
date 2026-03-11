@@ -2182,6 +2182,17 @@ test('--help prints usage without failing', (t) => {
 
   assert.equal(result.status, 0, result.stderr)
   assert.match(result.stdout, /Usage: codeowners-audit \[repo-or-path\] \[options\]/)
+  assert.match(
+    result.stdout,
+    /  \[repo-or-path\]\s{2,}Repository URL, GitHub shorthand \(owner\/repo\), or path to a local directory \(default: cwd\)/
+  )
+  assert.match(result.stdout, /Input and scope:/)
+  assert.match(result.stdout, /-g, --glob <pattern>[^\n]*\n\n  Report output:/)
+  assert.match(result.stdout, /Report output:/)
+  assert.match(result.stdout, /Interaction and diagnostics:/)
+  assert.match(result.stdout, /Core coverage checks:/)
+  assert.match(result.stdout, /GitHub validation and policy checks:/)
+  assert.match(result.stdout, /Team suggestions:/)
   assert.match(result.stdout, /--include-untracked/)
   assert.match(result.stdout, /--output-dir/)
   assert.match(result.stdout, /--cwd/)
@@ -2204,9 +2215,9 @@ test('--help prints usage without failing', (t) => {
   assert.match(result.stdout, /--github-token/)
   assert.match(result.stdout, /--verbose/)
   assert.match(result.stdout, /--version/)
-  assert.match(result.stdout, /  -o, --output <path> {6}Output HTML file path/)
-  assert.match(result.stdout, /--suggest-window-days <days>\n {27}Git history lookback window for suggestions/)
-  assert.match(result.stdout, /--suggest-ignore-teams <list>\n {27}Comma-separated team slugs/)
+  assert.match(result.stdout, /  -o, --output <path>\s{2,}Output HTML file path/)
+  assert.match(result.stdout, /--suggest-window-days <days>(?:\s{2,}Git history lookback window for suggestions|\n\s+Git history lookback window for suggestions)/)
+  assert.match(result.stdout, /--suggest-ignore-teams <list>(?:\s{2,}Comma-separated team slugs|\n\s+Comma-separated team slugs)/)
 })
 
 test('--version prints package version without failing', (t) => {
