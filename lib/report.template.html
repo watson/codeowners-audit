@@ -188,19 +188,19 @@
     }
     .controls label { color: var(--muted); display: flex; gap: 8px; align-items: center; font-size: 14px; }
     .suggestion-muted { color: var(--muted); }
-    .team-controls {
+    .owner-controls {
       display: grid;
       grid-template-columns: minmax(260px, 420px) minmax(280px, 1fr);
       gap: 12px;
       align-items: center;
     }
-    .team-chip-list {
+    .owner-chip-list {
       display: flex;
       flex-wrap: wrap;
       gap: 8px;
       margin-bottom: 10px;
     }
-    .team-chip {
+    .owner-chip {
       border: 1px solid rgba(139, 92, 246, 0.55);
       background: rgba(139, 92, 246, 0.18);
       color: #ddd6fe;
@@ -209,15 +209,15 @@
       font-size: 12px;
       cursor: pointer;
     }
-    .team-chip:hover {
+    .owner-chip:hover {
       background: rgba(139, 92, 246, 0.3);
     }
-    .team-chip.is-active {
+    .owner-chip.is-active {
       border-color: #c4b5fd;
       background: rgba(196, 181, 253, 0.34);
       color: #f5f3ff;
     }
-    .team-empty {
+    .owner-empty {
       border: 1px dashed var(--border);
       border-radius: 10px;
       padding: 12px;
@@ -354,7 +354,7 @@
       margin-top: 10px;
       margin-bottom: 6px;
     }
-    #team-file-count {
+    #owner-file-count {
       margin-top: 10px;
       margin-bottom: 6px;
     }
@@ -403,7 +403,7 @@
       .hero-title { align-items: flex-start; }
       .controls input[type="text"] { min-width: 100%; }
       .controls select { min-width: 100%; }
-      .team-controls {
+      .owner-controls {
         grid-template-columns: 1fr;
       }
     }
@@ -485,14 +485,14 @@
         <h2>Ownership Explorer</h2>
         <p class="muted">Select an owner to view the files they own</p>
       </div>
-      <div class="team-empty muted" id="team-empty-state"></div>
-      <div class="controls field-controls team-controls">
-        <select id="team-select" aria-label="Select owner"></select>
-        <input id="team-file-filter" type="text" placeholder="Filter selected owner's files..." />
+      <div class="owner-empty muted" id="owner-empty-state"></div>
+      <div class="controls field-controls owner-controls">
+        <select id="owner-select" aria-label="Select owner"></select>
+        <input id="owner-file-filter" type="text" placeholder="Filter selected owner's files..." />
       </div>
-      <div class="team-chip-list" id="team-chip-list"></div>
-      <div class="file-list" id="team-file-list"></div>
-      <p class="muted" id="team-file-count"></p>
+      <div class="owner-chip-list" id="owner-chip-list"></div>
+      <div class="file-list" id="owner-file-list"></div>
+      <p class="muted" id="owner-file-count"></p>
     </section>
 
     <section class="panel">
@@ -559,7 +559,7 @@
       const clamp = value => Math.max(0, Math.min(100, value))
       const scopeQueryParam = 'scope'
       const directoryRows = report.directories.filter(row => row.path !== '(root)')
-      const teamOwnershipRows = Array.isArray(report.teamOwnership) ? report.teamOwnership : []
+      const ownerIndexRows = Array.isArray(report.ownerIndex) ? report.ownerIndex : []
       const suggestionRows = Array.isArray(report.directoryTeamSuggestions) ? report.directoryTeamSuggestions : []
       const suggestionMeta = report.directoryTeamSuggestionsMeta || { enabled: false, warnings: [] }
       const codeownersValidationMeta = report.codeownersValidationMeta || {
@@ -595,7 +595,7 @@
       let selectedPath = readScopeFromLocation()
       let directoryController
       let unownedController
-      let teamController
+      let ownerController
 
       function setScope (nextPath, options) {
         const historyMode = options && options.historyMode ? options.historyMode : 'push'
@@ -605,7 +605,7 @@
 
         if (directoryController) directoryController.render()
         if (unownedController) unownedController.render()
-        if (teamController) teamController.render()
+        if (ownerController) ownerController.render()
 
         if (historyMode !== 'none') {
           if (historyMode === 'replace') {
@@ -643,7 +643,7 @@
         getDirectScopeStats
       )
       unownedController = setupUnownedFiles(report.unownedFiles, () => selectedPath)
-      teamController = setupTeamOwnershipExplorer(teamOwnershipRows, () => selectedPath)
+      ownerController = setupOwnerIndexExplorer(ownerIndexRows, () => selectedPath)
       syncScopeToLocation(selectedPath, true)
 
       globalThis.addEventListener('popstate', () => {
@@ -1342,26 +1342,26 @@
         return { render }
       }
 
-      function setupTeamOwnershipExplorer (rows, getScope) {
-        const teamSelect = document.getElementById('team-select')
-        const fileFilter = document.getElementById('team-file-filter')
-        const chipList = document.getElementById('team-chip-list')
-        const list = document.getElementById('team-file-list')
-        const count = document.getElementById('team-file-count')
-        const emptyState = document.getElementById('team-empty-state')
+      function setupOwnerIndexExplorer (rows, getScope) {
+        const ownerSelect = document.getElementById('owner-select')
+        const fileFilter = document.getElementById('owner-file-filter')
+        const chipList = document.getElementById('owner-chip-list')
+        const list = document.getElementById('owner-file-list')
+        const count = document.getElementById('owner-file-count')
+        const emptyState = document.getElementById('owner-empty-state')
         const safeRows = rows
-          .filter(row => row && typeof row.team === 'string' && Array.isArray(row.files))
+          .filter(row => row && typeof row.owner === 'string' && Array.isArray(row.files))
           .map((row) => ({
-            team: row.team,
+            owner: row.owner,
             total: Number(row.total) || row.files.length,
             files: row.files,
           }))
-        const rowByTeam = new Map(safeRows.map(row => [row.team, row]))
-        let selectedTeam = safeRows.length > 0 ? safeRows[0].team : ''
+        const rowByOwner = new Map(safeRows.map(row => [row.owner, row]))
+        let selectedOwner = safeRows.length > 0 ? safeRows[0].owner : ''
 
         if (safeRows.length === 0) {
-          emptyState.textContent = 'No @-prefixed owners found in resolved CODEOWNERS matches. Ownership entries appear when rules use @org/team or @username.'
-          teamSelect.disabled = true
+          emptyState.textContent = 'No resolved owners found in CODEOWNERS matches. Ownership entries appear when rules use @org/team, @username, or email owners.'
+          ownerSelect.disabled = true
           fileFilter.disabled = true
           chipList.innerHTML = ''
           list.textContent = '(none)'
@@ -1372,28 +1372,28 @@
         emptyState.hidden = true
         for (const row of safeRows) {
           const option = document.createElement('option')
-          option.value = row.team
-          option.textContent = row.team + ' \u2014 ' + fmt.format(row.total) + ' files'
-          teamSelect.appendChild(option)
+          option.value = row.owner
+          option.textContent = row.owner + ' \u2014 ' + fmt.format(row.total) + ' files'
+          ownerSelect.appendChild(option)
         }
 
-        const quickTeams = safeRows.slice(0, 12)
-        for (const row of quickTeams) {
+        const quickOwners = safeRows.slice(0, 12)
+        for (const row of quickOwners) {
           const chip = document.createElement('button')
           chip.type = 'button'
-          chip.className = 'team-chip'
-          chip.textContent = row.team + ' (' + fmt.format(row.total) + ')'
-          chip.setAttribute('data-team', row.team)
+          chip.className = 'owner-chip'
+          chip.textContent = row.owner + ' (' + fmt.format(row.total) + ')'
+          chip.setAttribute('data-owner', row.owner)
           chip.addEventListener('click', () => {
-            selectedTeam = row.team
-            teamSelect.value = selectedTeam
+            selectedOwner = row.owner
+            ownerSelect.value = selectedOwner
             render()
           })
           chipList.appendChild(chip)
         }
 
-        teamSelect.addEventListener('change', () => {
-          selectedTeam = teamSelect.value
+        ownerSelect.addEventListener('change', () => {
+          selectedOwner = ownerSelect.value
           render()
         })
         fileFilter.addEventListener('input', render)
@@ -1402,17 +1402,17 @@
         function render () {
           const scope = getScope()
           const query = fileFilter.value.trim().toLowerCase()
-          const selectedRow = rowByTeam.get(selectedTeam) || safeRows[0]
+          const selectedRow = rowByOwner.get(selectedOwner) || safeRows[0]
           if (!selectedRow) {
             list.textContent = '(none)'
             count.textContent = 'Showing 0 files.'
             return
           }
 
-          if (teamSelect.value !== selectedRow.team) {
-            teamSelect.value = selectedRow.team
+          if (ownerSelect.value !== selectedRow.owner) {
+            ownerSelect.value = selectedRow.owner
           }
-          selectedTeam = selectedRow.team
+          selectedOwner = selectedRow.owner
           const scopedFiles = scope
             ? selectedRow.files.filter(file => file === scope || file.startsWith(scope + '/'))
             : selectedRow.files
@@ -1422,12 +1422,12 @@
           const shown = filteredFiles.slice(0, 6000)
 
           list.textContent = shown.join('\n') || '(none)'
-          count.textContent = 'Owner: ' + selectedRow.team + ' — scope: ' + (scope || '(root)') +
+          count.textContent = 'Owner: ' + selectedRow.owner + ' — scope: ' + (scope || '(root)') +
             ' — showing ' + fmt.format(shown.length) + ' of ' + fmt.format(filteredFiles.length) + ' files.'
 
-          const chips = chipList.querySelectorAll('.team-chip')
+          const chips = chipList.querySelectorAll('.owner-chip')
           for (const chip of chips) {
-            const isActive = chip.getAttribute('data-team') === selectedRow.team
+            const isActive = chip.getAttribute('data-owner') === selectedRow.owner
             chip.classList.toggle('is-active', isActive)
           }
         }

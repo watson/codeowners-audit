@@ -26,7 +26,7 @@ See how ownership coverage looks in practice with [this interactive report](http
 - Coverage summary: total files, owned, unowned, and percentage
 - Directory explorer with filtering, sorting, and drill-down
 - Full unowned file list with scope and text filtering
-- Ownership explorer with quick chips and file filtering for `@org/team` and `@username` owners
+- Ownership explorer with quick chips and file filtering for resolved CODEOWNERS owners, including `@org/team`, `@username`, and email owners
 - Matches GitHub `CODEOWNERS` discovery precedence: `.github/`, repository root, then `docs/`
 - Detects CODEOWNERS patterns that match no repository paths
 - Detects directories with fragile coverage — 100% covered through individual file rules, but new files would lack owners
@@ -204,6 +204,7 @@ The report follows practical `CODEOWNERS` resolution behavior:
 
 - A file is considered **owned** if at least one owner is resolved.
 - When `--validate-github-owners` is enabled, `@username` and `@org/team` owners only count if GitHub confirms they exist and have write access to the repository.
+- The ownership explorer surfaces the resolved owners for each matched file, including email owners.
 - Within a single `CODEOWNERS` file, the **last matching rule wins**.
 - A pattern line with no owners acts as an ownerless override only when it is the last matching rule for a path, matching GitHub's documented behavior.
 - GitHub only considers `CODEOWNERS` at `.github/CODEOWNERS`, `CODEOWNERS`, and `docs/CODEOWNERS`, using the first file found in that order.
@@ -228,7 +229,7 @@ The generated page includes:
 - repository-level ownership metrics and coverage bar
 - scoped directory table with coverage bars
 - searchable list of unowned files
-- ownership explorer for filtering files by `@org/team` or `@username`
+- ownership explorer for filtering files by resolved CODEOWNERS owner, including `@org/team`, `@username`, and email owners
 - active `CODEOWNERS` file and rule count
 - warnings for extra or unsupported `CODEOWNERS` files that GitHub will ignore
 - warnings for CODEOWNERS patterns that match no repository paths

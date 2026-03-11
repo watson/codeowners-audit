@@ -247,7 +247,7 @@ test('running the bin creates a report in temp dir with expected shape', (t) => 
   assert.equal(Object.hasOwn(reportData, 'topLevel'), false)
   assert.ok(reportData.totals.files >= 3)
   assert.ok(reportData.unownedFiles.includes('src/unowned.js'))
-  assert.equal(Array.isArray(reportData.teamOwnership), true)
+  assert.equal(Array.isArray(reportData.ownerIndex), true)
   assert.equal(Array.isArray(reportData.directoryTeamSuggestions), true)
   assert.equal(reportData.directoryTeamSuggestions.length, 0)
   assert.equal(reportData.directoryTeamSuggestionsMeta.enabled, false)
@@ -272,20 +272,60 @@ test('report includes ownership index for @org/team and @username owners', (t) =
   const html = readFileSync(outputPath, 'utf8')
   const reportData = parseReportDataFromHtml(html)
 
-  const platform = reportData.teamOwnership.find(row => row.team === '@acme/platform')
+  const platform = reportData.ownerIndex.find(row => row.owner === '@acme/platform')
   assert.ok(platform, 'platform team should exist')
   assert.equal(platform.total, 2)
   assert.deepEqual(platform.files, ['src/dual.js', 'src/owned.js'])
 
-  const security = reportData.teamOwnership.find(row => row.team === '@acme/security')
+  const security = reportData.ownerIndex.find(row => row.owner === '@acme/security')
   assert.ok(security, 'security team should exist')
   assert.equal(security.total, 1)
   assert.deepEqual(security.files, ['src/dual.js'])
 
-  const alice = reportData.teamOwnership.find(row => row.team === '@alice')
+  const alice = reportData.ownerIndex.find(row => row.owner === '@alice')
   assert.ok(alice, 'individual user @alice should exist')
   assert.equal(alice.total, 1)
   assert.deepEqual(alice.files, ['src/owned.js'])
+})
+
+test('report includes email owners in the owner index', (t) => {
+  const repoDir = createRepo(t, {
+    codeowners: '/src/owned.js docs@example.com\n',
+  })
+
+  const result = runCli([], { cwd: repoDir })
+  assert.equal(result.status, 0, result.stderr)
+
+  const outputPath = parseOutputPathFromStdout(result.stdout)
+  const html = readFileSync(outputPath, 'utf8')
+  const reportData = parseReportDataFromHtml(html)
+
+  const docsOwner = reportData.ownerIndex.find(row => row.owner === 'docs@example.com')
+  assert.ok(docsOwner, 'email owner should exist')
+  assert.equal(docsOwner.total, 1)
+  assert.deepEqual(docsOwner.files, ['src/owned.js'])
+  assert.equal(reportData.unownedFiles.includes('src/owned.js'), false)
+})
+
+test('report includes mixed email and GitHub owners in the owner index', (t) => {
+  const repoDir = createRepo(t, {
+    codeowners: '/src/owned.js docs@example.com @acme/platform\n',
+  })
+
+  const result = runCli([], { cwd: repoDir })
+  assert.equal(result.status, 0, result.stderr)
+
+  const outputPath = parseOutputPathFromStdout(result.stdout)
+  const html = readFileSync(outputPath, 'utf8')
+  const reportData = parseReportDataFromHtml(html)
+
+  const docsOwner = reportData.ownerIndex.find(row => row.owner === 'docs@example.com')
+  assert.ok(docsOwner, 'email owner should exist')
+  assert.deepEqual(docsOwner.files, ['src/owned.js'])
+
+  const platform = reportData.ownerIndex.find(row => row.owner === '@acme/platform')
+  assert.ok(platform, 'GitHub owner should exist alongside the email owner')
+  assert.deepEqual(platform.files, ['src/owned.js'])
 })
 
 test('report treats ownerless override rules as unowned coverage gaps', (t) => {
@@ -311,7 +351,7 @@ test('report treats ownerless override rules as unowned coverage gaps', (t) => {
   assert.ok(reportData.unownedFiles.includes('apps/github/cleared.js'))
   assert.ok(!reportData.unownedFiles.includes('apps/owned.js'))
 
-  const octocat = reportData.teamOwnership.find(row => row.team === '@octocat')
+  const octocat = reportData.ownerIndex.find(row => row.owner === '@octocat')
   assert.ok(octocat, 'owner index should retain the broader apps owner')
   assert.ok(octocat.files.includes('apps/owned.js'))
   assert.ok(!octocat.files.includes('apps/github/cleared.js'))
@@ -338,7 +378,7 @@ test('report skips GitHub-invalid bracket syntax rules instead of counting them 
   assert.ok(reportData.unownedFiles.includes('src/[ab].js'))
   assert.ok(!reportData.unownedFiles.includes('src/owned.js'))
 
-  const team = reportData.teamOwnership.find(row => row.team === '@team')
+  const team = reportData.ownerIndex.find(row => row.owner === '@team')
   assert.ok(team, '@team should still appear for valid ownership')
   assert.deepEqual(team.files, ['src/owned.js'])
 })
@@ -369,11 +409,11 @@ test('report treats escaped wildcard patterns as literal filename matches', (t) 
   assert.ok(!reportData.unownedFiles.includes('src/file?.js'))
   assert.ok(reportData.unownedFiles.includes('src/fileA.js'))
 
-  const starTeam = reportData.teamOwnership.find(row => row.team === '@star-team')
+  const starTeam = reportData.ownerIndex.find(row => row.owner === '@star-team')
   assert.ok(starTeam, '@star-team should exist')
   assert.deepEqual(starTeam.files, ['src/literal*name.js'])
 
-  const questionTeam = reportData.teamOwnership.find(row => row.team === '@question-team')
+  const questionTeam = reportData.ownerIndex.find(row => row.owner === '@question-team')
   assert.ok(questionTeam, '@question-team should exist')
   assert.deepEqual(questionTeam.files, ['src/file?.js'])
 })
@@ -1263,7 +1303,7 @@ test('--validate-github-owners treats invalid GitHub owners as uncovered in the 
   assert.ok(reportData.unownedFiles.includes('src/owned.js'))
   assert.ok(reportData.unownedFiles.includes('src/unowned.js'))
   assert.equal(reportData.codeownersValidationMeta.invalidOwnerWarningCount, 2)
-  assert.equal(reportData.teamOwnership.some(row => row.team === '@ghost'), false)
+  assert.equal(reportData.ownerIndex.some(row => row.owner === '@ghost'), false)
 })
 
 test('--validate-github-owners preserves existing users and reports degraded validation when access checks are forbidden', async (t) => {
@@ -1458,8 +1498,57 @@ test('--validate-github-owners keeps mixed owner rules covered when at least one
   const reportData = parseReportDataFromHtml(readFileSync(path.join(repoDir, 'mixed-owner-report.html'), 'utf8'))
   assert.equal(reportData.unownedFiles.includes('src/owned.js'), false)
   assert.ok(reportData.unownedFiles.includes('src/unowned.js'))
-  assert.equal(reportData.teamOwnership.some(row => row.team === '@good'), true)
-  assert.equal(reportData.teamOwnership.some(row => row.team === '@ghost'), false)
+  assert.equal(reportData.ownerIndex.some(row => row.owner === '@good'), true)
+  assert.equal(reportData.ownerIndex.some(row => row.owner === '@ghost'), false)
+  assert.equal(reportData.codeownersValidationMeta.invalidOwnerWarningCount, 2)
+})
+
+test('--validate-github-owners keeps email owners in the owner index when invalid GitHub owners are removed', async (t) => {
+  const repoDir = createRepo(t, {
+    remoteUrl: 'git@github.com:test-org/test-repo.git',
+    codeowners: [
+      '/src/owned.js docs@example.com @ghost',
+      '/src/unowned.js @ghost',
+    ].join('\n') + '\n',
+  })
+
+  const server = createServer((req, res) => {
+    const url = new URL(req.url || '/', 'http://127.0.0.1')
+    res.setHeader('content-type', 'application/json')
+    if (url.pathname === '/repos/test-org/test-repo/collaborators/ghost/permission') {
+      res.statusCode = 404
+      res.end(JSON.stringify({ message: 'not found' }))
+      return
+    }
+    if (url.pathname === '/users/ghost') {
+      res.statusCode = 404
+      res.end(JSON.stringify({ message: 'not found' }))
+      return
+    }
+    res.statusCode = 404
+    res.end(JSON.stringify({ message: 'not found' }))
+  })
+  await /** @type {Promise<void>} */ (
+    new Promise((resolve) => { server.listen(0, '127.0.0.1', resolve) })
+  )
+  t.after(() => { server.close() })
+  const address = server.address()
+  assert.ok(address && typeof address === 'object')
+  const apiBaseUrl = `http://127.0.0.1:${address.port}`
+
+  const result = await runCliAsync([
+    '--validate-github-owners',
+    '--github-token', 'test-token',
+    '--github-api-base-url', apiBaseUrl,
+    '--output', 'mixed-email-owner-report.html',
+  ], { cwd: repoDir })
+
+  assert.equal(result.status, 0, result.stderr)
+  const reportData = parseReportDataFromHtml(readFileSync(path.join(repoDir, 'mixed-email-owner-report.html'), 'utf8'))
+  assert.equal(reportData.unownedFiles.includes('src/owned.js'), false)
+  assert.ok(reportData.unownedFiles.includes('src/unowned.js'))
+  assert.equal(reportData.ownerIndex.some(row => row.owner === 'docs@example.com'), true)
+  assert.equal(reportData.ownerIndex.some(row => row.owner === '@ghost'), false)
   assert.equal(reportData.codeownersValidationMeta.invalidOwnerWarningCount, 2)
 })
 
