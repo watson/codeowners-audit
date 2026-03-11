@@ -294,6 +294,32 @@ test('report treats ownerless override rules as unowned coverage gaps', (t) => {
   assert.ok(!octocat.files.includes('apps/github/cleared.js'))
 })
 
+test('report skips GitHub-invalid bracket syntax rules instead of counting them as ownership', (t) => {
+  const repoDir = createRepo(t, {
+    codeowners: [
+      '/src/owned.js @team',
+      '/src/[ab].js @team',
+    ].join('\n') + '\n',
+    trackedFiles: {
+      'src/[ab].js': 'module.exports = 3\n',
+    },
+  })
+
+  const result = runCli([], { cwd: repoDir })
+  assert.equal(result.status, 0, result.stderr)
+
+  const outputPath = parseOutputPathFromStdout(result.stdout)
+  const html = readFileSync(outputPath, 'utf8')
+  const reportData = parseReportDataFromHtml(html)
+
+  assert.ok(reportData.unownedFiles.includes('src/[ab].js'))
+  assert.ok(!reportData.unownedFiles.includes('src/owned.js'))
+
+  const team = reportData.teamOwnership.find(row => row.team === '@team')
+  assert.ok(team, '@team should still appear for valid ownership')
+  assert.deepEqual(team.files, ['src/owned.js'])
+})
+
 test('team suggestions map editors to repo teams for 0% covered directories', async (t) => {
   const repoDir = createRepo(t, {
     remoteUrl: 'git@github.com:test-org/test-repo.git',

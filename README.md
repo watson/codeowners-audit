@@ -210,7 +210,7 @@ The report follows practical `CODEOWNERS` resolution behavior:
 - Extra `CODEOWNERS` files in supported locations and any `CODEOWNERS` files outside those locations are reported as ignored by GitHub.
 - Directory rules match descendant files whether they are written as `/path/to/dir` or `/path/to/dir/`.
 - Use `--fail-on-missing-directory-slashes` if you want CI to enforce the explicit `/path/to/dir/` form as a readability and consistency convention.
-- `CODEOWNERS` negation patterns (`!pattern`) are ignored.
+- GitHub-invalid `CODEOWNERS` syntax is skipped, including negation patterns (`!pattern`), escaped leading `#` patterns such as `\#file`, and bracket expressions such as `[ab]` or `[a-z]`.
 
 ## Requirements
 

@@ -43,9 +43,13 @@ test('parseCodeownersRuleLine: strips inline comments', () => {
   assert.deepEqual(result, { pattern: '*.js', owners: ['@owner'] })
 })
 
-test('parseCodeownersRuleLine: preserves escaped hash in pattern', () => {
-  const result = parseCodeownersRuleLine('\\#file @owner')
-  assert.deepEqual(result, { pattern: '#file', owners: ['@owner'] })
+test('parseCodeownersRuleLine: returns null for escaped leading hash patterns', () => {
+  assert.equal(parseCodeownersRuleLine('\\#file @owner'), null)
+})
+
+test('parseCodeownersRuleLine: returns null for bracket expression patterns', () => {
+  assert.equal(parseCodeownersRuleLine('/src/[ab].js @team'), null)
+  assert.equal(parseCodeownersRuleLine('/src/[a-z].js @team'), null)
 })
 
 test('parseCodeownersRuleLine: handles escaped spaces in pattern', () => {
@@ -175,6 +179,19 @@ test('parseCodeowners: preserves ownerless override rules', () => {
   assert.equal(rules.length, 2)
   assert.equal(rules[1].pattern, '/apps/github')
   assert.deepEqual(rules[1].owners, [])
+})
+
+test('parseCodeowners: skips GitHub-invalid syntax lines', () => {
+  const rules = parseCodeowners([
+    '\\#file @owner',
+    '/src/[ab].js @team',
+    '/src/[a-z].js @team',
+    'path\\ with\\ spaces @owner',
+  ].join('\n'))
+
+  assert.equal(rules.length, 1)
+  assert.equal(rules[0].pattern, 'path with spaces')
+  assert.deepEqual(rules[0].owners, ['@owner'])
 })
 
 // --- findMatchingOwners ---
